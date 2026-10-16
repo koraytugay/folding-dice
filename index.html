@@ -362,6 +362,45 @@
     </div>
   </div>
 
+  <!-- Interactive Face Editor Modal (Opens when clicking a square face in Edit Mode) -->
+  <div class="modal-overlay hidden" id="face-editor-modal">
+    <div class="modal-card face-editor-card">
+      <div class="modal-header">
+        <div>
+          <h3 id="face-editor-title">Edit Dice Face</h3>
+          <span class="face-editor-subtitle" id="face-editor-subtitle">What would you like to change this face to?</span>
+        </div>
+        <button class="modal-close-btn" id="btn-close-face-editor">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="face-editor-section">
+          <span class="face-editor-label">Choose Face Symbol (Click to Apply):</span>
+          <div class="face-editor-symbols-grid" id="face-editor-symbols-grid">
+            <!-- Dynamically populated with the 6 geometric SVG symbols + Blank -->
+          </div>
+        </div>
+
+        <div class="face-editor-section">
+          <span class="face-editor-label">Face Background Color:</span>
+          <div class="face-editor-colors-grid" id="face-editor-colors-grid">
+            <!-- Dynamically populated with color swatches -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer face-editor-footer">
+        <div class="face-editor-left-actions">
+          <button class="btn btn-secondary" id="btn-face-editor-base" title="Make this square the stationary 2D Base Square">
+            ⚓ Set as Base
+          </button>
+          <button class="btn btn-danger-outline" id="btn-face-editor-delete" title="Remove this square from the 2D net">
+            🗑️ Delete Square
+          </button>
+        </div>
+        <button class="btn btn-primary" id="btn-face-editor-done">Done</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Main 3D Viewport Area -->
   <main id="viewport">
     <!-- 2D Architecture View Banner -->

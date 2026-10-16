@@ -1372,6 +1372,7 @@
       this.setupSquareInteractions();
       this.setupKeyboardShortcuts();
       this.setupHelpModal();
+      this.setupFaceEditorModal();
       this.setupDirectionIndicators();
       this.startFoldingAnimationLoop();
 
@@ -2365,31 +2366,9 @@
           return;
         }
 
-        if (this.currentMode === 'paint') {
-          const sq = this.net.get(gx, gz);
-          if (!sq) return;
-          const newColor = this.currentColor;
-          const newPip = this.selectedPipMode === 'auto'
-            ? ((sq.pip % 6) + 1)
-            : Number(this.selectedPipMode);
-          this.net.styleSquare(gx, gz, newColor, newPip, true);
-          return;
-        }
-
-        // If in Add mode and clicking a folded square, toggle its fold step
-        if (this.currentMode === 'add' && this.foldProgress > 0.05) {
-          const node = this.net.nodeMap.get(`${gx},${gz}`);
-          if (node && node.stepIndex > 0) {
-            this.stopAutoPlay();
-            if (this.foldProgress >= node.stepIndex) {
-              this.sound.playFoldStep(node.stepIndex, false);
-              this.targetFoldProgress = node.stepIndex - 1;
-            } else {
-              this.sound.playFoldStep(node.stepIndex, true);
-              this.targetFoldProgress = node.stepIndex;
-            }
-          }
-        }
+        // In Edit Mode (Add or Paint/Symbol mode), clicking any square opens the Face Editor Modal
+        // asking what the user wants to change that face to!
+        this.openFaceEditor(gx, gz);
       });
     }
 
@@ -2867,6 +2846,138 @@
       modal.addEventListener('click', (e) => {
         if (e.target === modal) closeModal();
       });
+    }
+
+    setupFaceEditorModal() {
+      this.faceEditorModal = document.getElementById('face-editor-modal');
+      this.faceEditorTitle = document.getElementById('face-editor-title');
+      this.faceEditorSubtitle = document.getElementById('face-editor-subtitle');
+      this.faceEditorSymbolsGrid = document.getElementById('face-editor-symbols-grid');
+      this.faceEditorColorsGrid = document.getElementById('face-editor-colors-grid');
+      this.btnCloseFaceEditor = document.getElementById('btn-close-face-editor');
+      this.btnFaceEditorDone = document.getElementById('btn-face-editor-done');
+      this.btnFaceEditorBase = document.getElementById('btn-face-editor-base');
+      this.btnFaceEditorDelete = document.getElementById('btn-face-editor-delete');
+      this.editingFaceCoords = null;
+
+      if (!this.faceEditorModal) return;
+
+      const closeEditor = () => {
+        this.faceEditorModal.classList.add('hidden');
+        this.editingFaceCoords = null;
+      };
+
+      this.btnCloseFaceEditor.addEventListener('click', closeEditor);
+      this.btnFaceEditorDone.addEventListener('click', closeEditor);
+
+      this.faceEditorModal.addEventListener('click', (e) => {
+        if (e.target === this.faceEditorModal) closeEditor();
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !this.faceEditorModal.classList.contains('hidden')) {
+          closeEditor();
+        }
+      });
+
+      this.btnFaceEditorBase.addEventListener('click', () => {
+        if (!this.editingFaceCoords) return;
+        const { gx, gz } = this.editingFaceCoords;
+        this.stopAutoPlay();
+        this.foldProgress = 0;
+        this.targetFoldProgress = 0;
+        this.net.setBaseSquare(gx, gz, true);
+        closeEditor();
+      });
+
+      this.btnFaceEditorDelete.addEventListener('click', () => {
+        if (!this.editingFaceCoords) return;
+        const { gx, gz } = this.editingFaceCoords;
+        const res = this.net.removeSquare(gx, gz, true);
+        if (!res.ok && res.reason === 'bridge_square') {
+          this.netStatusBadge.classList.add('status-invalid');
+          this.netStatusText.textContent = '⚠️ Delete outer leaf squares first so the net stays connected!';
+        } else if (!res.ok && res.reason === 'last_square') {
+          this.netStatusText.textContent = 'At least 1 base square must remain on the surface.';
+        }
+        closeEditor();
+      });
+    }
+
+    openFaceEditor(gx, gz) {
+      const sq = this.net.get(gx, gz);
+      if (!sq || !this.faceEditorModal) return;
+
+      this.editingFaceCoords = { gx, gz };
+      const key = `${gx},${gz}`;
+      const node = this.net.nodeMap.get(key);
+      const stepLabel = node && node.stepIndex === 0 ? '⚓ Base Square' : `Square #${node ? node.stepIndex : ''}`;
+      const targetFaceLabel = node ? `${node.targetFace} Face` : '2D Square';
+
+      this.faceEditorTitle.textContent = `Edit ${stepLabel} (${targetFaceLabel})`;
+      this.faceEditorSubtitle.textContent = 'What would you like to change this face to?';
+
+      // Enable/disable Base and Delete buttons
+      this.btnFaceEditorBase.disabled = (this.net.baseKey === key);
+      this.btnFaceEditorDelete.disabled = !this.net.canRemoveSquareWithoutDisconnecting(gx, gz);
+
+      // Populate the 6 Geometric Die Symbols + Blank option
+      this.faceEditorSymbolsGrid.innerHTML = '';
+      const symbolOrder = [1, 2, 3, 4, 5, 6, 0];
+
+      symbolOrder.forEach((symId) => {
+        const cfg = getSymbolConfig(symId);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'face-symbol-option' + (sq.pip === symId ? ' active' : '');
+
+        const previewBox = document.createElement('div');
+        previewBox.className = 'face-symbol-preview-box';
+        previewBox.style.backgroundColor = sq.color;
+        previewBox.style.color = isLightColor(sq.color) ? '#0f172a' : '#f8fafc';
+
+        if (cfg.svg) {
+          previewBox.innerHTML = cfg.svg;
+        } else {
+          previewBox.innerHTML = '<span class="face-symbol-preview-blank">None</span>';
+        }
+
+        const label = document.createElement('span');
+        label.className = 'face-symbol-option-name';
+        label.textContent = symId === 0 ? 'Blank (No Symbol)' : cfg.name;
+
+        btn.appendChild(previewBox);
+        btn.appendChild(label);
+
+        btn.addEventListener('click', () => {
+          this.net.styleSquare(gx, gz, sq.color, symId, true);
+          this.faceEditorModal.classList.add('hidden');
+          this.editingFaceCoords = null;
+        });
+
+        this.faceEditorSymbolsGrid.appendChild(btn);
+      });
+
+      // Populate Color Swatches
+      this.faceEditorColorsGrid.innerHTML = '';
+      PALETTE_COLORS.forEach((color) => {
+        const cBtn = document.createElement('button');
+        cBtn.type = 'button';
+        cBtn.className = 'face-color-option' + (sq.color.toLowerCase() === color.toLowerCase() ? ' active' : '');
+        cBtn.style.backgroundColor = color;
+        cBtn.title = color;
+
+        cBtn.addEventListener('click', () => {
+          this.net.styleSquare(gx, gz, color, sq.pip, true);
+          this.setColor(color);
+          // Re-render modal previews with the new background color
+          this.openFaceEditor(gx, gz);
+        });
+
+        this.faceEditorColorsGrid.appendChild(cBtn);
+      });
+
+      this.faceEditorModal.classList.remove('hidden');
     }
   }
 
