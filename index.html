@@ -2,438 +2,224 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Folding Dice 3D — 2D Net to 3D Cube Visualizer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Folding Dice Quiz — 2D Net to 3D Cube Spatial Reasoning</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-  <!-- Top Navigation & Info Bar -->
+<body class="quiz-active">
+  <!-- Main 3D Interactive Viewport -->
+  <div id="viewport">
+    <div id="world">
+      <!-- Subtle 2D Surface Grid Underneath the Flat Net -->
+      <div id="ground-grid"></div>
+
+      <!-- Hierarchical 3D Kinematic Tree Container for the 6-Square Net -->
+      <div id="net-tree-container"></div>
+    </div>
+  </div>
+
+  <!-- Top Bar: Brand, Live Quiz Score & Streak, Quick Actions -->
   <header class="top-bar">
     <div class="brand">
       <div class="brand-icon">
         <div class="mini-cube">
-          <div class="m-face m-front"><span>+</span></div>
-          <div class="m-face m-top"><span>■</span></div>
-          <div class="m-face m-right"><span>●</span></div>
+          <div class="m-face m-front">+</div>
+          <div class="m-face m-top">●</div>
+          <div class="m-face m-right">⚃</div>
         </div>
       </div>
       <div class="brand-text">
-        <span class="brand-title">FOLDING DICE</span>
-        <span class="brand-subtitle">2D Net to 3D Cube Visualizer</span>
+        <span class="brand-title">FOLDING DICE QUIZ</span>
+        <span class="brand-subtitle">2D Net &rarr; 3D Spatial Reasoning</span>
       </div>
     </div>
 
-    <!-- Active Mode Selector -->
-    <div class="tool-group mode-selector">
-      <button class="tool-btn active" data-mode="add" id="btn-mode-add" title="Add Square to 2D Net (Up to 6 squares)">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-        <span>Add Square</span>
-      </button>
-      <button class="tool-btn" data-mode="delete" id="btn-mode-delete" title="Delete Square (Click square or Shift+Click)">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-        <span>Delete</span>
-      </button>
-      <button class="tool-btn" data-mode="paint" id="btn-mode-paint" title="Paint & Set Symbol on Square (Click square to style)">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L4.35 19.4c-.39.39-.39 1.02 0 1.41.39.39 1.02.39 1.41 0l1.9-1.9C9.28 19.58 10.6 20 12 20c4.97 0 9-4.03 9-9s-4.03-9-9-9zm0 15c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/></svg>
-        <span>Paint / Symbol</span>
-      </button>
-      <button class="tool-btn" data-mode="anchor" id="btn-mode-anchor" title="Set Anchor Base Square (Click square that stays flat on ground)">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M12 2C8.14 2 5 5.14 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.86-3.14-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-        <span>Set Base</span>
-      </button>
-      <div class="mode-divider"></div>
-      <button class="tool-btn quiz-mode-btn" id="btn-quiz-mode" title="Toggle Spatial Reasoning Quiz Mode (Q)">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
-        <span>Quiz Mode</span>
-      </button>
-    </div>
-
-    <!-- Stats & Quick Actions -->
+    <!-- Center: Active Net Pattern, Score & Streak -->
     <div class="stats-group">
-      <div class="stat-badge" title="Total squares in the 2D net (Max 6 for a cube)">
-        <span class="stat-label">Squares:</span>
-        <span class="stat-value" id="square-count">1 / 6</span>
+      <div class="net-status-badge status-valid" id="net-pattern-badge" title="Randomly generated valid 6-square cube net">
+        <span id="net-pattern-text">🎲 6-Square Cube Net</span>
       </div>
-      <div class="net-status-badge" id="net-status-badge" title="Whether the current 2D arrangement folds into a valid 3D cube">
-        <span id="net-status-text">Add 5 more for a full dice</span>
-      </div>
-      <button class="icon-btn" id="btn-undo" title="Undo (Ctrl+Z)" disabled>
-        <svg viewBox="0 0 24 24" class="icon"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+      <span class="quiz-score-pill" id="quiz-score-pill">Score: 0 / 0</span>
+      <span class="quiz-streak-pill" id="quiz-streak-pill" title="Current Correct Streak">🔥 Streak: 0</span>
+    </div>
+
+    <!-- Right: New Question, Recenter, Sound & Help -->
+    <div class="stats-group">
+      <button class="top-action-btn" id="btn-top-new-question" title="Generate a new random 2D net question (Shortcut: N)">
+        🎲 New Question
       </button>
-      <button class="icon-btn" id="btn-redo" title="Redo (Ctrl+Y)" disabled>
-        <svg viewBox="0 0 24 24" class="icon"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg>
+
+      <button class="icon-btn" id="btn-recenter" title="Recenter 2D Net View (Shortcut: R)">
+        <svg viewBox="0 0 24 24" class="icon"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
       </button>
-      <button class="icon-btn active" id="btn-symbols" title="Toggle Die Symbols (+, □, ■, ○, ●, ⚃) (S)">
-        <span style="font-weight:900;font-size:12px;letter-spacing:1px;">+■●</span>
-      </button>
-      <button class="icon-btn active" id="btn-face-labels" title="Toggle Target 3D Face Labels (L)">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16z"/></svg>
-      </button>
-      <button class="icon-btn" id="btn-xray" title="Toggle X-Ray / See-Through Mode (X)">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
-      </button>
-      <button class="icon-btn" id="btn-sound" title="Toggle Sound">
+
+      <button class="icon-btn" id="btn-sound" title="Toggle Sound FX">
         <svg viewBox="0 0 24 24" class="icon" id="sound-icon-on"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
         <svg viewBox="0 0 24 24" class="icon hidden" id="sound-icon-off"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
       </button>
-      <button class="icon-btn" id="btn-help" title="Instructions & Controls">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm1.07-7.75l-.9.92C12.45 11.9 12 12.5 12 14h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
+
+      <button class="icon-btn" id="btn-help" title="How to Play &amp; Keyboard Shortcuts">
+        <svg viewBox="0 0 24 24" class="icon"><path d="M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"/></svg>
       </button>
     </div>
   </header>
 
-  <!-- Left Floating Quiz Mode Panel (Hidden in Builder Mode) -->
-  <aside class="quiz-sidebar hidden" id="quiz-sidebar">
+  <!-- Left Quiz Panel: 4 3D Perspective Options & Non-Folding Visual Hints -->
+  <aside class="quiz-sidebar" id="quiz-sidebar">
     <div class="quiz-card">
       <div class="quiz-top-header">
-        <div class="quiz-badge-group">
-          <span class="quiz-mode-pill">🎯 QUIZ MODE</span>
-          <span class="quiz-score-pill" id="quiz-score-pill">Score: 0 / 0</span>
-          <span class="quiz-streak-pill" id="quiz-streak-pill">🔥 0</span>
-        </div>
-        <button class="quiz-exit-btn" id="btn-exit-quiz" title="Return to Free Builder Mode">Exit</button>
+        <span class="quiz-mode-pill">🎯 SPATIAL QUIZ</span>
+        <span class="quiz-shortcut-hint">Keys: A–D · H: Hint · N: Next</span>
       </div>
 
       <p class="quiz-prompt-text">
-        Look at the <strong>2D net with symbols</strong> on the surface. When folded into a <strong>3D dice</strong>, which of the 4 perspectives below is <strong>correct</strong>?
+        Fold the <strong>2D net</strong> mentally (symbols stay on the <strong>outside</strong> of the die). Which <strong>3D perspective</strong> below is a valid view?
       </p>
 
-      <!-- 4 Possible 3D Perspective Options (2x2 Grid) -->
+      <!-- 4 Multiple-Choice 3D Cube Perspective Options (A, B, C, D) -->
       <div class="quiz-options-grid" id="quiz-options-grid">
-        <!-- Rendered dynamically by JS: Option A, B, C, D with 3D mini-cubes -->
+        <!-- Populated dynamically by app.js -->
       </div>
 
-      <!-- Feedback Box -->
+      <!-- Quiz Answer Feedback Banner -->
       <div class="quiz-feedback-box hidden" id="quiz-feedback-box">
         <div class="quiz-feedback-title" id="quiz-feedback-title"></div>
         <div class="quiz-feedback-desc" id="quiz-feedback-desc"></div>
       </div>
 
-      <!-- Non-Folding 2D Visual Hints Section -->
+      <!-- 2D Visual Hints -->
       <div class="quiz-hint-section">
         <div class="quiz-hint-header">
-          <span>💡 Visual Hints (No Folding):</span>
-          <button class="mini-action-btn" id="btn-quiz-progressive-hint" title="Step through hints one by one (H)">✨ Next Hint</button>
+          <span>💡 2D Visual Hints</span>
+          <button class="mini-action-btn" id="btn-quiz-progressive-hint" title="Reveal the next visual hint (Shortcut: H)">
+            ✨ Next Hint
+          </button>
         </div>
+
         <div class="quiz-hint-pills">
-          <button class="btn quiz-hint-pill" id="btn-hint-corner" title="Highlight the 3 lines meeting at a 3D corner in each direction (Cyan, Amber, Pink)">
+          <button class="quiz-hint-pill" id="btn-hint-corner" title="Highlight the 3 lines meeting at a 3D corner in each direction">
             📐 Corner Hint
           </button>
-          <button class="btn quiz-hint-pill" id="btn-hint-opposites" title="Color-code the 3 pairs of opposite faces on the 2D net (opposite faces can never touch!)">
+          <button class="quiz-hint-pill" id="btn-hint-opposites" title="Color-code the 3 pairs of opposite faces on the 2D net">
             🎨 Opposite Pairs
           </button>
-          <button class="btn quiz-hint-pill" id="btn-hint-edges" title="Highlight which open 2D edges will zip together when folded">
+          <button class="quiz-hint-pill" id="btn-hint-edges" title="Highlight matching open edges that zip together in 3D">
             🔗 Zip Edges
           </button>
-          <button class="btn quiz-hint-pill" id="btn-hint-eliminate" title="Cross out one impossible 3D option and explain why">
+          <button class="quiz-hint-pill" id="btn-hint-eliminate" title="Cross out one impossible 3D option and see why">
             ❌ Eliminate 1
           </button>
         </div>
+
         <div class="quiz-hint-info hidden" id="quiz-hint-info"></div>
       </div>
 
-      <div class="divider"></div>
-
-      <!-- Next Question / New Random Question -->
-      <div class="quiz-bottom-actions">
-        <button class="btn btn-next-question" id="btn-next-question">
-          <span>🎲 New Random Question</span>
-        </button>
-      </div>
+      <button class="btn btn-next-question" id="btn-next-question">
+        🎲 Next Random Question
+      </button>
     </div>
   </aside>
 
-  <!-- Left Floating Palette & Presets Toolbar -->
-  <aside class="left-palette" id="builder-sidebar">
-    <div class="palette-card">
-      <div class="palette-header">
-        <span>Square Color</span>
-        <label class="rainbow-toggle" title="Pick a distinct color for each new square">
-          <input type="checkbox" id="auto-color-toggle" />
-          <span class="slider"></span>
-          <span class="label-text">Auto</span>
-        </label>
-      </div>
-
-      <div class="color-swatches" id="color-swatches">
-        <!-- Rendered by JS -->
-      </div>
-
-      <div class="custom-color-row">
-        <label for="custom-color-picker" class="custom-color-btn" title="Pick any custom color">
-          <input type="color" id="custom-color-picker" value="#ffffff" />
-          <span class="custom-color-preview" id="custom-color-preview" style="background-color: #ffffff;"></span>
-          <span class="custom-color-label">Custom Color</span>
-        </label>
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- Die Symbol Selector -->
-      <div class="pip-selector-section">
-        <div class="palette-header">
-          <span>Die Face Symbol</span>
-          <button class="mini-action-btn" id="btn-sum7" title="Assign all 6 distinct symbols across the squares">All 6</button>
-        </div>
-        <div class="pip-buttons-grid" id="pip-buttons-grid">
-          <button class="pip-btn active" data-pip="auto" title="Auto-assign the 6 symbols in order">Auto</button>
-          <button class="pip-btn" data-pip="1" title="Plus Sign (+)">+ Plus</button>
-          <button class="pip-btn" data-pip="2" title="Empty Square (□)">□ Sq</button>
-          <button class="pip-btn" data-pip="3" title="Filled Black Square (■)">■ Fill</button>
-          <button class="pip-btn" data-pip="4" title="Empty Circle (○)">○ Cir</button>
-          <button class="pip-btn" data-pip="5" title="Filled Black Circle (●)">● Dot</button>
-          <button class="pip-btn" data-pip="6" title="Four Dots (⚃)">⚃ 4Dot</button>
-          <button class="pip-btn" data-pip="0" title="Blank square (no symbol)">Blank</button>
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- 2D Dice Net Presets -->
-      <div class="presets-section">
-        <div class="palette-header">
-          <span class="section-label">2D Net Presets</span>
-          <button class="mini-action-btn" id="btn-random-net" title="Pick one of the 11 valid cube nets at random">🎲 Random</button>
-        </div>
-        <div class="presets-grid">
-          <button class="preset-btn" data-preset="single" title="Start with 1 square on the 2D surface">1 Square</button>
-          <button class="preset-btn" data-preset="cross" title="Classic Cross Net (1-4-1)">Cross Net</button>
-          <button class="preset-btn" data-preset="tnet" title="T-Shape Cube Net (1-4-1)">T-Shape</button>
-          <button class="preset-btn" data-preset="stairs" title="Staircase Net (2-2-2)">Stairs Net</button>
-          <button class="preset-btn" data-preset="znet" title="Offset Z Net (2-3-1)">Z-Shape</button>
-          <button class="preset-btn" data-preset="lnet" title="Long L Wing Net (1-4-1)">Wing Net</button>
-          <button class="preset-btn" data-preset="threeThree" title="Two Rows of 3 Net (3-3)">3-3 Net</button>
-          <button class="preset-btn preset-invalid" data-preset="invalidOverlap" title="Educational Demo: 6 squares that collide when folded!">⚠️ Overlap</button>
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="action-buttons">
-        <button class="btn btn-secondary" id="btn-clear" title="Reset to a single starting square">Start With 1 Square</button>
-        <div class="action-row-2">
-          <button class="btn btn-secondary" id="btn-export" title="Export 2D net as JSON">Export</button>
-          <button class="btn btn-secondary" id="btn-import" title="Import 2D net from JSON">Import</button>
-        </div>
-        <input type="file" id="import-file-input" accept=".json" style="display:none" />
-      </div>
-    </div>
-  </aside>
-
-  <!-- Bottom Center: Step-by-Step Folding Controller -->
+  <!-- Step-by-Step 3D Folding Controller Dock (Always available for educational visualization) -->
   <section class="fold-controller-dock" id="fold-controller-dock">
     <div class="fold-card">
+      <!-- Top Row: Current Step Description & Speed Selector -->
       <div class="fold-header-row">
         <div class="fold-stage-info">
           <span class="fold-stage-badge" id="fold-stage-badge">2D SURFACE</span>
-          <span class="fold-step-title" id="fold-step-title">Step 0 of 0 — Ready to add squares</span>
+          <span class="fold-step-title" id="fold-step-title">Step 0 of 5 — Flat 2D Net</span>
         </div>
-        <div class="fold-speed-group" title="Animation speed for each folding step">
+
+        <div class="fold-speed-group" title="Animation Speed">
           <span class="speed-label">Speed:</span>
-          <button class="speed-btn active" data-speed="slow" title="Slow educational folding speed">Slow</button>
-          <button class="speed-btn" data-speed="normal" title="Medium folding speed">Normal</button>
-          <button class="speed-btn" data-speed="fast" title="Fast folding speed">Fast</button>
+          <button class="speed-btn active" data-speed="slow">Slow</button>
+          <button class="speed-btn" data-speed="normal">Normal</button>
+          <button class="speed-btn" data-speed="fast">Fast</button>
         </div>
       </div>
 
-      <!-- Step Pills & Interactive Scrubber -->
+      <!-- Middle Row: Interactive Step Pills + Continuous Scrubber -->
       <div class="fold-timeline-row">
         <div class="step-pills-container" id="step-pills-container">
-          <!-- Step pills rendered dynamically by JS -->
+          <!-- Dynamically populated: Step 0 (2D), Step 1..5 -->
         </div>
         <div class="slider-wrap">
           <span class="slider-end-label">2D Flat</span>
-          <input type="range" id="fold-progress-slider" min="0" max="500" value="0" step="1" title="Drag to manually scrub through folding steps" />
+          <input type="range" id="fold-progress-slider" min="0" max="500" value="0" step="1" />
           <span class="slider-end-label">3D Dice</span>
         </div>
       </div>
 
-      <!-- Primary Step-by-Step Action Buttons -->
+      <!-- Bottom Row: Primary Step-by-Step & Fold Out Controls -->
       <div class="fold-actions-row">
-        <button class="fold-btn fold-btn-secondary" id="btn-unfold-all" title="Unfold completely flat to 2D surface (Home)">
-          <svg viewBox="0 0 24 24" class="icon"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
+        <button class="fold-btn fold-btn-secondary" id="btn-unfold-all" title="Unfold completely flat back to 2D surface">
+          <svg viewBox="0 0 24 24" class="icon"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
           <span>Flatten 2D</span>
         </button>
 
-        <button class="fold-btn fold-btn-step" id="btn-step-backward" title="Fold Out 1 Square Step-by-Step (Left Arrow)">
+        <button class="fold-btn fold-btn-step" id="btn-step-backward" title="Fold Out 1 Square (Previous Step)">
           <svg viewBox="0 0 24 24" class="icon"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
           <span>Fold Out Step</span>
         </button>
 
-        <button class="fold-btn fold-btn-primary" id="btn-step-forward" title="Fold Next Square Step-by-Step into 3D (Right Arrow)">
+        <button class="fold-btn fold-btn-primary" id="btn-step-forward" title="Fold In 1 Square Slowly (Next Step)">
           <span>Fold Next Step</span>
           <svg viewBox="0 0 24 24" class="icon"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
         </button>
 
-        <button class="fold-btn fold-btn-play" id="btn-auto-fold" title="Automatically fold/unfold all squares step by step (F)">
-          <svg viewBox="0 0 24 24" class="icon" id="play-fold-icon"><path d="M8 5v14l11-7z"/></svg>
+        <button class="fold-btn fold-btn-play" id="btn-auto-fold" title="Automatically fold or unfold step-by-step">
+          <svg viewBox="0 0 24 24" class="icon" id="auto-fold-icon"><path d="M8 5v14l11-7z"/></svg>
           <span id="btn-auto-fold-label">Auto Fold 3D</span>
         </button>
       </div>
     </div>
   </section>
 
-  <!-- Floating 3D Navigation Controls (Right Bottom) -->
-  <div class="camera-controls">
-    <div class="cam-nav-group">
-      <button class="cam-btn" id="btn-zoom-in" title="Zoom In (+)">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-      </button>
-      <div class="zoom-level-display" id="zoom-indicator">100%</div>
-      <button class="cam-btn" id="btn-zoom-out" title="Zoom Out (-)">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M19 13H5v-2h14v2z"/></svg>
-      </button>
-      <div class="cam-divider"></div>
-      <button class="cam-btn" id="btn-recenter" title="Recenter View & Focus (R)">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-      </button>
-      <button class="cam-btn" id="btn-auto-rotate" title="Toggle Auto-Spin Showcase (Space)">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
-      </button>
-    </div>
-    <div class="cam-divider"></div>
-    <div class="view-preset-pills">
-      <button class="pill-btn active" data-view="iso" title="Free 3D Isometric Orbit View">
-        <span class="pill-dot dot-iso"></span>3D ISO
-      </button>
-      <button class="pill-btn" data-view="top" title="2D Top Surface View (Plan)">
-        <span class="pill-dot dot-top"></span>2D TOP
-      </button>
-      <button class="pill-btn" data-view="bottom" title="2D Bottom View (Under)">
-        <span class="pill-dot dot-bottom"></span>BOTTOM
-      </button>
-      <button class="pill-btn" data-view="front" title="2D Front View (Elevation)">
-        <span class="pill-dot dot-front"></span>FRONT
-      </button>
-      <button class="pill-btn" data-view="back" title="2D Back View (Rear)">
-        <span class="pill-dot dot-back"></span>BACK
-      </button>
-      <button class="pill-btn" data-view="left" title="2D Left Side View">
-        <span class="pill-dot dot-left"></span>LEFT
-      </button>
-      <button class="pill-btn" data-view="right" title="2D Right Side View">
-        <span class="pill-dot dot-right"></span>RIGHT
-      </button>
-    </div>
-  </div>
-
-  <!-- Help & Shortcuts Modal -->
+  <!-- Help & Rules Modal -->
   <div class="modal-overlay hidden" id="help-modal">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>How to use Folding Dice 3D</h3>
+        <h3>Folding Dice Quiz — Guide &amp; Shortcuts</h3>
         <button class="modal-close-btn" id="btn-close-modal">&times;</button>
       </div>
       <div class="modal-body">
         <div class="help-section">
-          <h4>1. Build Your 2D Net (Up to 6 Squares)</h4>
-          <p><strong>Add Squares:</strong> When the net is flat in 2D, hover over any dashed <strong>+</strong> slot around your existing squares and click to attach a new square (up to 6 squares total).</p>
-          <p><strong>Delete Squares:</strong> Switch to the <em>Delete</em> tool or hold <span class="kbd">Shift</span> + Click a square to remove it.</p>
-          <p><strong>Set Base Square:</strong> Use <em>Set Base</em> to choose which square stays anchored flat on the ground while all other squares fold up around it!</p>
-        </div>
-        <div class="help-section">
-          <h4>2. Fold & Unfold Step-by-Step into a 3D Dice</h4>
-          <p><strong>Fold Next Step:</strong> Click <strong>Fold Next Step</strong> (or press <span class="kbd">&rarr;</span>) to slowly fold one square 90&deg; along its hinge crease.</p>
-          <p><strong>Fold Out Step:</strong> Click <strong>Fold Out Step</strong> (or press <span class="kbd">&larr;</span>) to unfold one square back toward the 2D surface.</p>
-          <p><strong>Interactive Scrubber &amp; Auto-Play:</strong> Click any step pill, drag the timeline slider, or click <strong>Auto Fold 3D</strong> to animate the entire sequence!</p>
-        </div>
-        <div class="help-section">
-          <h4>3. Spatial Reasoning Quiz Mode (Q)</h4>
-          <p><strong>How to Play:</strong> Click <strong>Quiz Mode</strong> in the top bar. A random 6-square 2D net with the 6 geometric symbols (<strong>+</strong> Plus, <strong>□</strong> Empty Square, <strong>■</strong> Black Square, <strong>○</strong> Empty Circle, <strong>●</strong> Black Circle, <strong>⚃</strong> Four Dots) is generated alongside <strong>4 possible 3D cube perspectives (A, B, C, D)</strong>.</p>
-          <p><strong>Non-Folding Visual Hints:</strong> Pick and choose any visual hint on the flat 2D net (or press <span class="kbd">H</span> for <em>Next Hint</em>): <strong>📐 Corner Hint</strong> (highlights the 3 lines meeting at a 3D corner in each direction), <strong>🎨 Opposite Pairs</strong> (color-codes the 3 pairs of opposite faces that can never touch), <strong>🔗 Zip Edges</strong>, or <strong>❌ Eliminate 1</strong>!</p>
-        </div>
-        <div class="help-section">
-          <h4>Keyboard Shortcuts</h4>
+          <h4>1. The 6 Die Symbols</h4>
+          <p>Each random 6-square net contains all 6 geometric symbols on crisp white squares:</p>
           <ul>
-            <li><span class="kbd">&rarr;</span> / <span class="kbd">&larr;</span> Fold / Unfold Step</li>
-            <li><span class="kbd">Q</span> Toggle Quiz Mode</li>
-            <li><span class="kbd">H</span> Next Quiz Visual Hint</li>
-            <li><span class="kbd">F</span> Auto Fold / Unfold All</li>
-            <li><span class="kbd">1</span>&ndash;<span class="kbd">4</span> Tool Modes</li>
-            <li><span class="kbd">S</span> Toggle Face Symbols</li>
-            <li><span class="kbd">L</span> Toggle 3D Face Labels</li>
-            <li><span class="kbd">X</span> Toggle X-Ray Mode</li>
+            <li><span class="kbd">+</span> Plus Sign</li>
+            <li><span class="kbd">□</span> Empty Square</li>
+            <li><span class="kbd">■</span> Filled Black Square</li>
+            <li><span class="kbd">○</span> Empty Circle</li>
+            <li><span class="kbd">●</span> Filled Black Circle</li>
+            <li><span class="kbd">⚃</span> Four Dots</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>2. Non-Folding 2D Visual Hints</h4>
+          <p>Need help seeing how the flat 2D squares meet in 3D without folding the net?</p>
+          <p>• <strong>📐 Corner Hint</strong>: Highlights the 3 colored lines (<span style="color:#22d3ee">Cyan</span>, <span style="color:#fbbf24">Amber</span>, <span style="color:#f472b6">Pink</span>) and vertex dot that meet at the 3D corner.</p>
+          <p>• <strong>🎨 Opposite Pairs</strong>: Color-codes the 3 pairs of opposite faces (<code>OPP A</code>, <code>OPP B</code>, <code>OPP C</code>) — two opposite faces can never touch!</p>
+          <p>• <strong>🔗 Zip Edges</strong>: Shows which open perimeter edges (<code>E1 &harr; E1</code>, etc.) zip together when folded.</p>
+          <p>• <strong>❌ Eliminate 1</strong>: Crosses out an impossible 3D option and explains why.</p>
+        </div>
+        <div class="help-section">
+          <h4>3. Camera &amp; Keyboard Shortcuts</h4>
+          <ul>
+            <li><span class="kbd">A</span> <span class="kbd">B</span> <span class="kbd">C</span> <span class="kbd">D</span> Choose Option</li>
+            <li><span class="kbd">H</span> Next Visual Hint</li>
+            <li><span class="kbd">N</span> New Random Question</li>
+            <li><span class="kbd">R</span> Recenter View</li>
+            <li><span class="kbd">Left Drag</span> Orbit 3D Canvas</li>
+            <li><span class="kbd">Scroll</span> Zoom In / Out</li>
           </ul>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-primary" id="btn-modal-gotit">Got it, let's fold!</button>
+        <button class="btn btn-primary" id="btn-modal-gotit">Got It!</button>
       </div>
     </div>
   </div>
-
-  <!-- Main 3D Viewport Area -->
-  <main id="viewport">
-    <!-- 2D Architecture View Banner -->
-    <div id="arch-banner" class="arch-banner hidden">
-      <span class="arch-badge">📐 ORTHOGONAL VIEW</span>
-      <span id="arch-banner-title" class="arch-title">2D Top Surface</span>
-      <button id="btn-exit-arch" class="arch-btn-switch" title="Return to 3D Orbit">Orbit 3D</button>
-    </div>
-
-    <!-- 3D Orientation ViewCube Gizmo (Top Right) -->
-    <div class="viewcube-widget" id="viewcube-widget" title="Interactive 3D ViewCube: click any face to snap view, or drag to rotate">
-      <div class="viewcube-header">
-        <span class="viewcube-title">ORIENTATION</span>
-        <button class="viewcube-home-btn" id="btn-viewcube-home" title="Reset to Isometric 3D Orbit">
-          <svg viewBox="0 0 24 24" class="icon"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-        </button>
-      </div>
-      <div class="viewcube-viewport" id="viewcube-viewport">
-        <div class="viewcube" id="viewcube">
-          <div class="vface v-front" data-view="front" title="Front Elevation">FRONT</div>
-          <div class="vface v-back" data-view="back" title="Back Elevation">BACK</div>
-          <div class="vface v-left" data-view="left" title="Left Elevation">LEFT</div>
-          <div class="vface v-right" data-view="right" title="Right Elevation">RIGHT</div>
-          <div class="vface v-top" data-view="top" title="2D Top Surface">TOP</div>
-          <div class="vface v-bottom" data-view="bottom" title="Bottom View">BTM</div>
-        </div>
-      </div>
-    </div>
-
-    <div id="world">
-      <!-- Ground reference grid plane -->
-      <div id="ground-grid"></div>
-
-      <!-- 3D Ground Orientation Arrows & Compass Badges -->
-      <div id="ground-compass" class="ground-compass">
-        <div class="dir-indicator dir-front" data-view="front" title="FRONT: Click to switch to Front View">
-          <div class="dir-line"></div>
-          <div class="dir-arrow-head"></div>
-          <div class="dir-pill">
-            <span class="dir-name">FRONT</span>
-          </div>
-        </div>
-        <div class="dir-indicator dir-back" data-view="back" title="BACK: Click to switch to Back View">
-          <div class="dir-line"></div>
-          <div class="dir-arrow-head"></div>
-          <div class="dir-pill">
-            <span class="dir-name">BACK</span>
-          </div>
-        </div>
-        <div class="dir-indicator dir-left" data-view="left" title="LEFT: Click to switch to Left View">
-          <div class="dir-line"></div>
-          <div class="dir-arrow-head"></div>
-          <div class="dir-pill">
-            <span class="dir-name">LEFT</span>
-          </div>
-        </div>
-        <div class="dir-indicator dir-right" data-view="right" title="RIGHT: Click to switch to Right View">
-          <div class="dir-line"></div>
-          <div class="dir-arrow-head"></div>
-          <div class="dir-pill">
-            <span class="dir-name">RIGHT</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Hierarchical 3D Kinematic Tree Container for the Folding Squares -->
-      <div id="net-tree-container"></div>
-
-      <!-- 2D Candidate Slot Buttons for adding adjacent squares when flat -->
-      <div id="candidate-slots-container"></div>
-    </div>
-  </main>
 
   <script src="app.js"></script>
 </body>
