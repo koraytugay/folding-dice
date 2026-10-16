@@ -1,5 +1,5 @@
 /**
- * FOLDING DICE QUIZ - Interactive 2D Net to 3D Cube Spatial Reasoning Quiz
+ * FOLDING DICE 3D - Interactive 2D Net to 3D Cube Educational Visualizer
  * Pure Vanilla HTML5, CSS3 3D Transforms, and ES6 JavaScript.
  * Zero external dependencies.
  */
@@ -20,6 +20,31 @@
     south: { dx: 0,  dz: 1,  opposite: 'north', label: 'Front' },
     north: { dx: 0,  dz: -1, opposite: 'south', label: 'Back' },
   };
+
+  const PALETTE_COLORS = [
+    '#ffffff', // Classic Dice White
+    '#3b82f6', // Electric Blue
+    '#10b981', // Emerald Green
+    '#f59e0b', // Amber Gold
+    '#ef4444', // Ruby Red
+    '#8b5cf6', // Violet Purple
+    '#06b6d4', // Cyan
+    '#f97316', // Tangy Orange
+    '#ec4899', // Vibrant Pink
+    '#84cc16', // Lime Green
+    '#6366f1', // Indigo
+    '#475569', // Slate Gray
+  ];
+
+  // Distinct auto-colors for squares 1..6 when Auto-Color is enabled
+  const AUTO_SQUARE_COLORS = [
+    '#ffffff', // 1: White (Base)
+    '#60a5fa', // 2: Sky Blue
+    '#34d399', // 3: Emerald
+    '#fbbf24', // 4: Amber
+    '#f87171', // 5: Coral Red
+    '#c084fc', // 6: Lavender
+  ];
 
   // The 6 Geometric Die Symbols:
   // 1: A plus sign (+)
@@ -77,7 +102,7 @@
     return SYMBOLS_CONFIG[id] || SYMBOLS_CONFIG[0];
   }
 
-  // All 11 Valid Hexomino Cube Nets (each defined as 6 [gx, gz] coordinates)
+  // All 11 Valid Hexomino Cube Nets (each defined as 6 [gx, gz] coordinates, with [0,0] as default base)
   const ALL_11_VALID_NETS = [
     // 1. Classic Cross (1-4-1)
     { name: 'Classic Cross (1-4-1)', coords: [[0,0], [-1,0], [1,0], [2,0], [0,-1], [0,1]] },
@@ -146,6 +171,15 @@
       }
     }
 
+    playAdd(count = 1) {
+      const base = 300 + count * 45;
+      this.playTone(base, base * 1.6, 0.09, 'sine', 0.17);
+    }
+
+    playDelete() {
+      this.playTone(460, 180, 0.11, 'sine', 0.16);
+    }
+
     playPaint() {
       this.playTone(540, 620, 0.06, 'triangle', 0.14);
     }
@@ -174,11 +208,12 @@
     }
   }
 
-  // --- Camera Controller (Interactive Orbit, Pan & Zoom on Viewport) ---
+  // --- Camera Controller (Orbit, Zoom, Pan, Ortho 2D Views, ViewCube) ---
   class CameraController {
-    constructor(viewportEl, worldEl) {
+    constructor(viewportEl, worldEl, onUpdate) {
       this.viewport = viewportEl;
       this.world = worldEl;
+      this.onUpdate = onUpdate;
 
       // Default isometric orbit angle tuned for viewing both 2D ground net & 3D folding cube
       this.rotX = -38;
@@ -194,6 +229,8 @@
       this.zoom = 1.0;
       this.targetZoom = 1.0;
 
+      this.isAutoRotating = false;
+
       this.isPointerDown = false;
       this.dragStartX = 0;
       this.dragStartY = 0;
@@ -201,8 +238,26 @@
       this.activeButton = 0;
       this.isShiftDown = false;
 
+      this.projectionMode = 'perspective';
+      this.onProjectionChange = null;
+
+      this.viewCube = document.getElementById('viewcube');
+      this.viewCubeViewport = document.getElementById('viewcube-viewport');
+
       this.setupEvents();
       this.startRenderLoop();
+    }
+
+    setProjection(mode) {
+      this.projectionMode = mode;
+      if (mode === 'ortho') {
+        this.viewport.classList.add('arch-view');
+      } else {
+        this.viewport.classList.remove('arch-view');
+      }
+      if (this.onProjectionChange) {
+        this.onProjectionChange(mode);
+      }
     }
 
     setupEvents() {
@@ -223,14 +278,59 @@
 
       this.viewport.addEventListener('pointerdown', (e) => this.onPointerDown(e));
       window.addEventListener('pointermove', (e) => this.onPointerMove(e));
-      window.addEventListener('pointerup', () => this.onPointerUp());
-      window.addEventListener('pointercancel', () => this.onPointerUp());
+      window.addEventListener('pointerup', (e) => this.onPointerUp(e));
+      window.addEventListener('pointercancel', (e) => this.onPointerUp(e));
       this.viewport.addEventListener('contextmenu', (e) => e.preventDefault());
       this.viewport.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
 
       this.viewport.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
       this.viewport.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
       this.viewport.addEventListener('touchend', () => { this.initialPinchDist = null; });
+
+      if (this.viewCubeViewport) {
+        let isCubeDragging = false;
+        let cubeStartX = 0, cubeStartY = 0;
+        let hasCubeDragged = false;
+
+        this.viewCubeViewport.addEventListener('pointerdown', (e) => {
+          isCubeDragging = true;
+          hasCubeDragged = false;
+          cubeStartX = e.clientX;
+          cubeStartY = e.clientY;
+          e.stopPropagation();
+        });
+
+        window.addEventListener('pointermove', (e) => {
+          if (!isCubeDragging) return;
+          const dx = e.clientX - cubeStartX;
+          const dy = e.clientY - cubeStartY;
+          if (Math.hypot(dx, dy) > 3) hasCubeDragged = true;
+          if (!hasCubeDragged) return;
+
+          cubeStartX = e.clientX;
+          cubeStartY = e.clientY;
+
+          if (this.projectionMode === 'ortho') {
+            this.setProjection('perspective');
+          }
+          this.targetRotY += dx * 0.7;
+          this.targetRotX -= dy * 0.7;
+          this.targetRotX = Math.max(-89, Math.min(89, this.targetRotX));
+        });
+
+        window.addEventListener('pointerup', (e) => {
+          if (!isCubeDragging) return;
+          isCubeDragging = false;
+          if (!hasCubeDragged) {
+            const face = e.target.closest('.vface');
+            if (face) {
+              const view = face.dataset.view;
+              const pill = document.querySelector(`.pill-btn[data-view="${view}"]`);
+              if (pill) pill.click();
+            }
+          }
+        });
+      }
     }
 
     onPointerDown(e) {
@@ -266,6 +366,10 @@
         this.targetPanX += dx;
         this.targetPanY += dy;
       } else {
+        if (this.projectionMode === 'ortho') {
+          this.setProjection('perspective');
+          this.viewport.classList.remove('arch-top');
+        }
         this.targetRotY += dx * 0.42;
         this.targetRotX -= dy * 0.42;
         this.targetRotX = Math.max(-89, Math.min(89, this.targetRotX));
@@ -304,19 +408,103 @@
     }
 
     setZoom(val) {
-      this.targetZoom = Math.max(0.45, Math.min(3.0, val));
+      this.targetZoom = Math.max(0.35, Math.min(3.5, val));
+      if (this.onUpdate) this.onUpdate(this);
+    }
+
+    zoomIn() {
+      this.setZoom(this.targetZoom * 1.22);
+    }
+
+    zoomOut() {
+      this.setZoom(this.targetZoom * 0.82);
     }
 
     resetView(bounds = null) {
+      this.viewport.classList.remove('arch-top');
       this.targetRotX = -38;
       this.targetRotY = 34;
       this.targetPanX = bounds ? -bounds.centerX : 0;
       this.targetPanY = bounds ? -bounds.centerY : 0;
       this.targetZoom = 1.0;
+      this.setProjection('perspective');
+      if (this.onUpdate) this.onUpdate(this);
+    }
+
+    setViewPreset(preset, bounds = null) {
+      if (preset === 'top') {
+        this.viewport.classList.add('arch-top');
+      } else {
+        this.viewport.classList.remove('arch-top');
+      }
+      const cx = bounds ? bounds.centerX : 0;
+      const cy = bounds ? bounds.centerY : 0;
+      const cz = bounds ? bounds.centerZ : 0;
+
+      switch (preset) {
+        case 'iso':
+          this.targetRotX = -38;
+          this.targetRotY = 34;
+          this.setProjection('perspective');
+          this.targetPanX = -cx;
+          this.targetPanY = -cy;
+          break;
+        case 'top':
+          this.targetRotX = -90;
+          this.targetRotY = 0;
+          this.setProjection('ortho');
+          this.targetPanX = -cx;
+          this.targetPanY = -cz;
+          break;
+        case 'bottom':
+          this.targetRotX = 90;
+          this.targetRotY = 0;
+          this.setProjection('ortho');
+          this.targetPanX = -cx;
+          this.targetPanY = cz;
+          break;
+        case 'front':
+          this.targetRotX = 0;
+          this.targetRotY = 0;
+          this.setProjection('ortho');
+          this.targetPanX = -cx;
+          this.targetPanY = -cy;
+          break;
+        case 'back':
+          this.targetRotX = 0;
+          this.targetRotY = 180;
+          this.setProjection('ortho');
+          this.targetPanX = cx;
+          this.targetPanY = -cy;
+          break;
+        case 'left':
+          this.targetRotX = 0;
+          this.targetRotY = 90;
+          this.setProjection('ortho');
+          this.targetPanX = -cz;
+          this.targetPanY = -cy;
+          break;
+        case 'right':
+          this.targetRotX = 0;
+          this.targetRotY = -90;
+          this.setProjection('ortho');
+          this.targetPanX = cz;
+          this.targetPanY = -cy;
+          break;
+      }
+    }
+
+    toggleAutoRotate() {
+      this.isAutoRotating = !this.isAutoRotating;
+      return this.isAutoRotating;
     }
 
     startRenderLoop() {
       const step = () => {
+        if (this.isAutoRotating && !this.isPointerDown) {
+          this.targetRotY += 0.35;
+        }
+
         const lerp = 0.18;
         this.rotX += (this.targetRotX - this.rotX) * lerp;
         this.rotY += (this.targetRotY - this.rotY) * lerp;
@@ -337,13 +525,17 @@
         rotateX(${this.rotX.toFixed(2)}deg)
         rotateY(${this.rotY.toFixed(2)}deg)
       `;
+
+      if (this.viewCube) {
+        this.viewCube.style.transform = `rotateX(${this.rotX.toFixed(2)}deg) rotateY(${this.rotY.toFixed(2)}deg)`;
+      }
     }
   }
 
-  // --- 3D Vector Math Helper for Exact Target Face Calculation ---
+  // --- 3D Vector Math Helper for Exact Target Face & Overlap Calculation ---
   function getFaceNameFromNormal(nx, ny, nz) {
-    // Inward normal (nx, ny, nz) points INTO the cube center from that face.
-    // Base square sits on bottom (inward normal (0, +1, 0) -> BOTTOM).
+    // Remember: inward normal (nx, ny, nz) points INTO the cube center from that face.
+    // Base square is at bottom (y = -0.5 in 3D up-coords), so its inward normal is (0, +1, 0) -> BOTTOM.
     if (ny === 1)  return 'BOTTOM';
     if (ny === -1) return 'TOP';
     if (nx === -1) return 'RIGHT';
@@ -373,7 +565,7 @@
   function isLightColor(hex) {
     if (!hex || hex[0] !== '#') return true;
     const c = hex.substring(1);
-    const rgb = parseInt(c.length === 3 ? c.split('').map((x) => x + x).join('') : c, 16);
+    const rgb = parseInt(c.length === 3 ? c.split('').map(x => x + x).join('') : c, 16);
     const r = (rgb >> 16) & 255;
     const g = (rgb >> 8) & 255;
     const b = rgb & 255;
@@ -383,8 +575,10 @@
 
   // --- 2D Net & Kinematic 3D Folding Tree Manager ---
   class NetManager {
-    constructor(treeContainerEl) {
+    constructor(treeContainerEl, slotsContainerEl, soundManager) {
       this.treeContainer = treeContainerEl;
+      this.slotsContainer = slotsContainerEl;
+      this.sound = soundManager;
 
       // Map: key "gx,gz" -> { gx, gz, color, pip }
       this.squares = new Map();
@@ -393,22 +587,203 @@
       // Computed BFS tree nodes ordered by stepIndex (0 = Base, 1..N-1 = Folding Steps)
       this.orderedNodes = [];
       this.nodeMap = new Map();
+      this.hasOverlap = false;
       this.faceToNodes = new Map();
 
+      // Undo / Redo stacks
+      this.undoStack = [];
+      this.redoStack = [];
+
+      // Callbacks
       this.onNetChange = null;
+      this.onHistoryChange = null;
+      this.onCandidateClick = null;
     }
 
     key(gx, gz) {
       return `${gx},${gz}`;
     }
 
-    loadState(stateObj) {
+    has(gx, gz) {
+      return this.squares.has(this.key(gx, gz));
+    }
+
+    get(gx, gz) {
+      return this.squares.get(this.key(gx, gz));
+    }
+
+    snapshot() {
+      const list = [];
+      for (const sq of this.squares.values()) {
+        list.push({ gx: sq.gx, gz: sq.gz, color: sq.color, pip: sq.pip });
+      }
+      return { baseKey: this.baseKey, list };
+    }
+
+    pushUndo(prevState) {
+      this.undoStack.push(prevState);
+      this.redoStack = [];
+      this.notifyHistory();
+    }
+
+    addSquare(gx, gz, color = '#ffffff', pip = 1, recordUndo = true, animate = true) {
+      const k = this.key(gx, gz);
+      if (this.squares.has(k)) return false;
+      if (this.squares.size >= MAX_SQUARES) return false;
+
+      // Must be adjacent to an existing square if net is non-empty
+      if (this.squares.size > 0 && !this.isAdjacentToExisting(gx, gz)) {
+        return false;
+      }
+
+      if (recordUndo) {
+        this.pushUndo(this.snapshot());
+      }
+
+      if (this.squares.size === 0) {
+        this.baseKey = k;
+      }
+
+      this.squares.set(k, { gx, gz, color, pip });
+      this.sound.playAdd(this.squares.size);
+      this.rebuildTree(animate ? k : null);
+      return true;
+    }
+
+    canRemoveSquareWithoutDisconnecting(gx, gz) {
+      const k = this.key(gx, gz);
+      if (!this.squares.has(k) || this.squares.size <= 1) return false;
+
+      // Check if remaining squares form a single connected component
+      const remainingKeys = [...this.squares.keys()].filter((key) => key !== k);
+      const startKey = remainingKeys[0];
+      const visited = new Set([startKey]);
+      const queue = [startKey];
+
+      while (queue.length > 0) {
+        const curr = queue.shift();
+        const [cx, cz] = curr.split(',').map(Number);
+        for (const dirCfg of Object.values(DIRS_2D)) {
+          const nk = this.key(cx + dirCfg.dx, cz + dirCfg.dz);
+          if (nk !== k && this.squares.has(nk) && !visited.has(nk)) {
+            visited.add(nk);
+            queue.push(nk);
+          }
+        }
+      }
+
+      return visited.size === remainingKeys.length;
+    }
+
+    removeSquare(gx, gz, recordUndo = true) {
+      const k = this.key(gx, gz);
+      if (!this.squares.has(k)) return { ok: false, reason: 'not_found' };
+      if (this.squares.size <= 1) return { ok: false, reason: 'last_square' };
+
+      if (!this.canRemoveSquareWithoutDisconnecting(gx, gz)) {
+        this.sound.playError();
+        return { ok: false, reason: 'bridge_square' };
+      }
+
+      if (recordUndo) {
+        this.pushUndo(this.snapshot());
+      }
+
+      this.squares.delete(k);
+
+      // If we deleted the base square, promote an adjacent or first remaining square to Base
+      if (this.baseKey === k || !this.squares.has(this.baseKey)) {
+        this.baseKey = this.squares.keys().next().value;
+      }
+
+      this.sound.playDelete();
+      this.rebuildTree();
+      return { ok: true };
+    }
+
+    styleSquare(gx, gz, newColor, newPip, recordUndo = true) {
+      const sq = this.get(gx, gz);
+      if (!sq) return false;
+      const resolvedPip = newPip !== null && newPip !== undefined ? newPip : sq.pip;
+      const resolvedColor = newColor || sq.color;
+      if (sq.color === resolvedColor && sq.pip === resolvedPip) return false;
+
+      if (recordUndo) {
+        this.pushUndo(this.snapshot());
+      }
+
+      sq.color = resolvedColor;
+      sq.pip = resolvedPip;
+      this.sound.playPaint();
+      this.rebuildTree();
+      return true;
+    }
+
+    setBaseSquare(gx, gz, recordUndo = true) {
+      const k = this.key(gx, gz);
+      if (!this.squares.has(k) || this.baseKey === k) return false;
+
+      if (recordUndo) {
+        this.pushUndo(this.snapshot());
+      }
+
+      this.baseKey = k;
+      this.sound.playPaint();
+      this.rebuildTree();
+      return true;
+    }
+
+    autoAssignSum7Pips(recordUndo = true) {
+      if (this.squares.size === 0) return;
+      if (recordUndo) {
+        this.pushUndo(this.snapshot());
+      }
+
+      // Standard opposite face pairs that sum to 7:
+      // BOTTOM: 1, TOP: 6, FRONT: 2, BACK: 5, LEFT: 3, RIGHT: 4
+      const standardFacePips = {
+        BOTTOM: 1,
+        TOP: 6,
+        FRONT: 2,
+        BACK: 5,
+        LEFT: 3,
+        RIGHT: 4,
+      };
+
+      const used = new Set();
+      for (const node of this.orderedNodes) {
+        const sq = this.squares.get(node.key);
+        const preferred = standardFacePips[node.targetFace];
+        if (preferred && !used.has(preferred)) {
+          sq.pip = preferred;
+          used.add(preferred);
+        } else {
+          // Fallback for colliding faces
+          for (let p = 1; p <= 6; p++) {
+            if (!used.has(p)) {
+              sq.pip = p;
+              used.add(p);
+              break;
+            }
+          }
+        }
+      }
+
+      this.sound.playCompleteDice();
+      this.rebuildTree();
+    }
+
+    loadState(stateObj, recordUndo = true) {
+      if (recordUndo && this.squares.size > 0) {
+        this.pushUndo(this.snapshot());
+      }
+
       this.squares.clear();
       const list = Array.isArray(stateObj) ? stateObj : (stateObj.list || []);
       list.slice(0, MAX_SQUARES).forEach((item, idx) => {
         const gx = Number(item.gx ?? item.x ?? 0);
         const gz = Number(item.gz ?? item.z ?? 0);
-        const color = item.color || '#ffffff';
+        const color = item.color || AUTO_SQUARE_COLORS[idx % AUTO_SQUARE_COLORS.length];
         const pip = item.pip !== undefined ? Number(item.pip) : ((idx % 6) + 1);
         this.squares.set(this.key(gx, gz), { gx, gz, color, pip });
       });
@@ -422,12 +797,62 @@
       this.rebuildTree();
     }
 
+    undo() {
+      if (this.undoStack.length === 0) return false;
+      const prev = this.undoStack.pop();
+      this.redoStack.push(this.snapshot());
+      this.loadState(prev, false);
+      this.notifyHistory();
+      return true;
+    }
+
+    redo() {
+      if (this.redoStack.length === 0) return false;
+      const next = this.redoStack.pop();
+      this.undoStack.push(this.snapshot());
+      this.loadState(next, false);
+      this.notifyHistory();
+      return true;
+    }
+
+    notifyHistory() {
+      if (this.onHistoryChange) {
+        this.onHistoryChange(this.undoStack.length > 0, this.redoStack.length > 0);
+      }
+    }
+
+    isAdjacentToExisting(gx, gz) {
+      for (const dirCfg of Object.values(DIRS_2D)) {
+        if (this.has(gx + dirCfg.dx, gz + dirCfg.dz)) return true;
+      }
+      return false;
+    }
+
+    getCandidateSlots() {
+      if (this.squares.size >= MAX_SQUARES) return [];
+      const candidates = new Map();
+
+      for (const sq of this.squares.values()) {
+        for (const [dirName, cfg] of Object.entries(DIRS_2D)) {
+          const nx = sq.gx + cfg.dx;
+          const nz = sq.gz + cfg.dz;
+          const nk = this.key(nx, nz);
+          if (!this.squares.has(nk) && !candidates.has(nk)) {
+            candidates.set(nk, { gx: nx, gz: nz, fromKey: this.key(sq.gx, sq.gz), dir: dirName });
+          }
+        }
+      }
+      return [...candidates.values()];
+    }
+
     // Build BFS Spanning Tree from baseKey and construct nested 3D DOM elements
-    rebuildTree() {
+    rebuildTree(newlyAddedKey = null) {
       this.treeContainer.innerHTML = '';
+      this.slotsContainer.innerHTML = '';
       this.orderedNodes = [];
       this.nodeMap.clear();
       this.faceToNodes.clear();
+      this.hasOverlap = false;
 
       if (this.squares.size === 0) {
         if (this.onNetChange) this.onNetChange();
@@ -498,7 +923,17 @@
         }
       }
 
-      // Compute which open 2D perimeter edges zip together in 3D when folded (for Zip Edges Hint)
+      // Check for 3D face collisions / overlaps
+      for (const nodesOnFace of this.faceToNodes.values()) {
+        if (nodesOnFace.length > 1) {
+          this.hasOverlap = true;
+          nodesOnFace.forEach((n) => {
+            n.isColliding = true;
+          });
+        }
+      }
+
+      // Compute which open 2D perimeter edges zip together in 3D when folded (for Quiz Visual Hint)
       const ZIP_EDGE_COLORS = [
         '#ec4899', // E1: Pink
         '#06b6d4', // E2: Cyan
@@ -530,6 +965,7 @@
       }
 
       let zipPairIdx = 0;
+      this.zipEdgePairs = [];
       for (const [edge3DKey, edges] of openEdgesBy3DKey.entries()) {
         if (edges.length === 2 && edges[0].node.key !== edges[1].node.key) {
           const color = ZIP_EDGE_COLORS[zipPairIdx % ZIP_EDGE_COLORS.length];
@@ -537,12 +973,18 @@
           zipPairIdx++;
           edges[0].node.zipEdges.push({ dir: edges[0].dirName, tag, color, edge3DKey });
           edges[1].node.zipEdges.push({ dir: edges[1].dirName, tag, color, edge3DKey });
+          this.zipEdgePairs.push({
+            tag,
+            color,
+            nodeA: edges[0].node,
+            nodeB: edges[1].node,
+          });
         }
       }
 
       // Create nested 3D DOM hierarchy
       for (const node of this.orderedNodes) {
-        const el = this.createSquareNodeDOM(node);
+        const el = this.createSquareNodeDOM(node, node.key === newlyAddedKey);
         node.el = el;
 
         if (node.parentKey === null) {
@@ -555,6 +997,9 @@
         }
       }
 
+      // Render 2D candidate "+" slots around perimeter
+      this.renderCandidateSlots();
+
       // Apply initial flat transform (angles = 0)
       this.applyFoldAngles(0);
 
@@ -563,9 +1008,12 @@
       }
     }
 
-    createSquareNodeDOM(node) {
+    createSquareNodeDOM(node, animateSpawn = false) {
       const nodeEl = document.createElement('div');
       nodeEl.className = 'square-node' + (node.stepIndex === 0 ? ' is-base-node' : '');
+      if (node.isColliding) {
+        nodeEl.classList.add('collision-warning');
+      }
       nodeEl.dataset.key = node.key;
       nodeEl.dataset.gx = node.gx;
       nodeEl.dataset.gz = node.gz;
@@ -583,7 +1031,7 @@
       }
 
       const tileEl = document.createElement('div');
-      tileEl.className = 'square-tile spawn-anim';
+      tileEl.className = 'square-tile' + (animateSpawn ? ' spawn-anim' : '');
       tileEl.dataset.key = node.key;
       tileEl.dataset.gx = node.gx;
       tileEl.dataset.gz = node.gz;
@@ -592,7 +1040,7 @@
       const lightBg = isLightColor(node.color);
       tileEl.style.setProperty('--symbol-color', lightBg ? '#0f172a' : '#f8fafc');
 
-      // Opposite Pair Group styling for Opposite-Pairs Hint
+      // Opposite Pair Group styling for Quiz Mode Opposite-Pairs Hint
       const oppGroupMap = {
         TOP:    { label: 'OPP A', color: '#2563eb', bg: 'rgba(37, 99, 235, 0.22)' },
         BOTTOM: { label: 'OPP A', color: '#2563eb', bg: 'rgba(37, 99, 235, 0.22)' },
@@ -652,10 +1100,15 @@
           faceEl.appendChild(symWrap);
         }
 
-        // Bottom Target 3D Face Badge (revealed once solved)
+        // Bottom Target 3D Face Badge
         const targetBadge = document.createElement('span');
-        targetBadge.className = 'target-face-badge';
-        targetBadge.textContent = node.targetFace;
+        if (node.isColliding) {
+          targetBadge.className = 'target-face-badge overlap-badge';
+          targetBadge.textContent = `⚠️ ${node.targetFace}`;
+        } else {
+          targetBadge.className = 'target-face-badge';
+          targetBadge.textContent = node.targetFace;
+        }
         faceEl.appendChild(targetBadge);
 
         tileEl.appendChild(faceEl);
@@ -663,6 +1116,38 @@
 
       nodeEl.appendChild(tileEl);
       return nodeEl;
+    }
+
+    renderCandidateSlots() {
+      this.slotsContainer.innerHTML = '';
+      const slots = this.getCandidateSlots();
+
+      slots.forEach((slot) => {
+        const slotEl = document.createElement('div');
+        slotEl.className = 'candidate-slot';
+        slotEl.dataset.gx = slot.gx;
+        slotEl.dataset.gz = slot.gz;
+        slotEl.title = `Click to add Square #${this.squares.size + 1} here`;
+
+        const px = slot.gx * SQUARE_SIZE - HALF_SIZE;
+        const py = HALF_SIZE;
+        const pz = slot.gz * SQUARE_SIZE - HALF_SIZE;
+        slotEl.style.transform = `translate3d(${px}px, ${py}px, ${pz}px) rotateX(90deg)`;
+
+        const plus = document.createElement('div');
+        plus.className = 'slot-plus';
+        plus.textContent = '+';
+        slotEl.appendChild(plus);
+
+        slotEl.addEventListener('pointerup', (e) => {
+          if (e.button !== 0) return;
+          if (this.onCandidateClick) {
+            this.onCandidateClick(slot.gx, slot.gz, e);
+          }
+        });
+
+        this.slotsContainer.appendChild(slotEl);
+      });
     }
 
     // Apply continuous fold progress (0 .. totalSteps) to every node in the kinematic tree
@@ -688,7 +1173,7 @@
           : 1 - Math.pow(-2 * rawT + 2, 3) / 2;
         const theta = easedT * 90;
 
-        // Highlight the square if it's currently in motion or hovered
+        // Highlight the square if it's currently in motion or selected
         const isActivelyMoving = (rawT > 0.01 && rawT < 0.99) || activeStepHighlight === node.stepIndex;
         node.el.classList.toggle('active-folding', isActivelyMoving);
 
@@ -721,7 +1206,7 @@
       }
 
       if (isFolded) {
-        // When folded into a 3D cube, the cube is centered right above the Base Square
+        // When folded into a 3D cube, the cube is centered right above the Base Square!
         const baseNode = this.orderedNodes[0];
         return {
           centerX: baseNode.gx * SQUARE_SIZE,
@@ -747,24 +1232,33 @@
     }
   }
 
-  // --- Main Quiz Application Controller ---
+  // --- Main Application Controller ---
   class App {
     constructor() {
       this.viewport = document.getElementById('viewport');
       this.world = document.getElementById('world');
       this.treeContainer = document.getElementById('net-tree-container');
+      this.slotsContainer = document.getElementById('candidate-slots-container');
 
-      // Top Bar Elements
-      this.netPatternText = document.getElementById('net-pattern-text');
-      this.quizScorePill = document.getElementById('quiz-score-pill');
-      this.quizStreakPill = document.getElementById('quiz-streak-pill');
-      this.btnTopNewQuestion = document.getElementById('btn-top-new-question');
-      this.btnRecenter = document.getElementById('btn-recenter');
+      // UI Elements
+      this.squareCountEl = document.getElementById('square-count');
+      this.netStatusBadge = document.getElementById('net-status-badge');
+      this.netStatusText = document.getElementById('net-status-text');
+      this.zoomIndicator = document.getElementById('zoom-indicator');
+      this.btnUndo = document.getElementById('btn-undo');
+      this.btnRedo = document.getElementById('btn-redo');
+      this.btnSymbols = document.getElementById('btn-symbols');
+      this.btnFaceLabels = document.getElementById('btn-face-labels');
+      this.btnXray = document.getElementById('btn-xray');
       this.btnSound = document.getElementById('btn-sound');
       this.soundIconOn = document.getElementById('sound-icon-on');
       this.soundIconOff = document.getElementById('sound-icon-off');
 
-      // Post-Solve Folding Controller Elements
+      this.archBanner = document.getElementById('arch-banner');
+      this.archBannerTitle = document.getElementById('arch-banner-title');
+      this.btnExitArch = document.getElementById('btn-exit-arch');
+
+      // Folding Controller Elements
       this.foldStageBadge = document.getElementById('fold-stage-badge');
       this.foldStepTitle = document.getElementById('fold-step-title');
       this.stepPillsContainer = document.getElementById('step-pills-container');
@@ -775,7 +1269,13 @@
       this.btnAutoFold = document.getElementById('btn-auto-fold');
       this.btnAutoFoldLabel = document.getElementById('btn-auto-fold-label');
 
-      // Quiz Panel Elements
+      // Quiz Mode Elements
+      this.btnQuizMode = document.getElementById('btn-quiz-mode');
+      this.quizSidebar = document.getElementById('quiz-sidebar');
+      this.builderSidebar = document.getElementById('builder-sidebar');
+      this.quizScorePill = document.getElementById('quiz-score-pill');
+      this.quizStreakPill = document.getElementById('quiz-streak-pill');
+      this.btnExitQuiz = document.getElementById('btn-exit-quiz');
       this.quizOptionsGrid = document.getElementById('quiz-options-grid');
       this.quizFeedbackBox = document.getElementById('quiz-feedback-box');
       this.quizFeedbackTitle = document.getElementById('quiz-feedback-title');
@@ -788,7 +1288,14 @@
       this.quizHintInfo = document.getElementById('quiz-hint-info');
       this.btnNextQuestion = document.getElementById('btn-next-question');
 
+      // State
+      this.currentMode = 'add'; // 'add', 'delete', 'paint', 'anchor'
+      this.currentColor = PALETTE_COLORS[0]; // Crisp white (#ffffff) for high-contrast black symbols
+      this.isAutoColor = false;
+      this.selectedPipMode = 'auto'; // 'auto' or 0..6 (symbol ID)
+
       // Quiz State
+      this.isQuizMode = false;
       this.quizScore = 0;
       this.quizTotal = 0;
       this.quizStreak = 0;
@@ -798,69 +1305,147 @@
       this.currentQuizCorner = null;
       this.eliminatedOptionIndices = new Set();
 
-      // Folding Animation State (used for post-solve 3D fold celebration & replay)
-      this.foldProgress = 0;
-      this.targetFoldProgress = 0;
+      // Folding Animation State
+      this.foldProgress = 0;       // Current continuous step value in [0, totalSteps]
+      this.targetFoldProgress = 0; // Target step value
       this.isAutoPlaying = false;
-      this.autoPlayDirection = 1;
+      this.autoPlayDirection = 1;  // +1 folding in, -1 unfolding out
       this.stepPauseTimer = null;
-      this.foldSpeed = 'slow';
+      this.foldSpeed = 'slow';     // 'slow', 'normal', 'fast'
       this.hoveredStepIndex = null;
 
       // Subsystems
       this.sound = new SoundManager();
-      this.net = new NetManager(this.treeContainer);
-      this.camera = new CameraController(this.viewport, this.world);
+      this.net = new NetManager(this.treeContainer, this.slotsContainer, this.sound);
+      this.camera = new CameraController(this.viewport, this.world, (cam) => {
+        this.zoomIndicator.textContent = Math.round(cam.targetZoom * 100) + '%';
+      });
 
       this.init();
     }
 
     init() {
+      document.body.dataset.activeMode = this.currentMode;
+
       this.net.onNetChange = () => {
+        // Clamp fold progress if square count decreased
+        const maxSteps = this.getTotalSteps();
+        if (this.foldProgress > maxSteps) {
+          this.foldProgress = maxSteps;
+          this.targetFoldProgress = maxSteps;
+        }
+        this.updateNetStatusUI();
         this.renderStepPills();
         this.updateFoldControlsUI();
+        this.updateCompassPositions();
       };
 
-      this.setupTopBarActions();
+      this.net.onHistoryChange = (canUndo, canRedo) => {
+        this.btnUndo.disabled = !canUndo;
+        this.btnRedo.disabled = !canRedo;
+      };
+
+      this.net.onCandidateClick = (gx, gz) => {
+        if (this.camera.hasDragged || this.isQuizMode) return;
+        this.handleAddSquareAt(gx, gz);
+      };
+
+      this.camera.onProjectionChange = (mode) => {
+        if (mode === 'perspective') {
+          this.archBanner.classList.add('hidden');
+          const activePill = document.querySelector('.pill-btn.active');
+          if (activePill && activePill.dataset.view !== 'iso') {
+            document.querySelectorAll('.pill-btn').forEach((p) => p.classList.remove('active'));
+            const isoPill = document.querySelector('.pill-btn[data-view="iso"]');
+            if (isoPill) isoPill.classList.add('active');
+          }
+        }
+      };
+
+      this.setupPaletteAndPips();
+      this.setupToolButtons();
       this.setupFoldingControls();
-      this.setupSquareInteractions();
       this.setupQuizControls();
+      this.setupCameraButtons();
+      this.setupPresets();
+      this.setupExportImport();
+      this.setupSquareInteractions();
       this.setupKeyboardShortcuts();
       this.setupHelpModal();
+      this.setupDirectionIndicators();
       this.startFoldingAnimationLoop();
 
-      // Launch immediately with a randomly generated 2D dice net quiz question
-      this.generateQuizQuestion();
+      // Check URL parameters (e.g., ?preset=cross or ?quiz=1)
+      const params = new URLSearchParams(window.location.search);
+      const presetParam = params.get('preset');
+      const quizParam = params.get('quiz');
+
+      if (quizParam) {
+        this.setQuizMode(true);
+      } else if (presetParam && this.presets && this.presets[presetParam]) {
+        this.loadPreset(presetParam);
+      } else {
+        // Start with 1 white square with the Plus (+) symbol on the 2D surface
+        this.net.addSquare(0, 0, '#ffffff', 1, false, false);
+        this.camera.resetView(this.net.getBounds(false));
+      }
     }
 
     getTotalSteps() {
       return Math.max(0, this.net.orderedNodes.length - 1);
     }
 
-    setupTopBarActions() {
-      if (this.btnTopNewQuestion) {
-        this.btnTopNewQuestion.addEventListener('click', () => {
-          this.generateQuizQuestion();
-        });
-      }
+    getNextAutoColor() {
+      const idx = this.net.squares.size % AUTO_SQUARE_COLORS.length;
+      return AUTO_SQUARE_COLORS[idx];
+    }
 
-      if (this.btnRecenter) {
-        this.btnRecenter.addEventListener('click', () => {
-          this.camera.resetView(this.net.getBounds(this.foldProgress > 2));
-        });
+    getNextAutoPip() {
+      // Pick the lowest unused symbol ID in 1..6
+      const used = new Set();
+      for (const sq of this.net.squares.values()) {
+        used.add(sq.pip);
       }
+      for (let p = 1; p <= 6; p++) {
+        if (!used.has(p)) return p;
+      }
+      return (this.net.squares.size % 6) + 1;
+    }
 
-      if (this.btnSound) {
-        this.btnSound.addEventListener('click', () => {
-          this.sound.enabled = !this.sound.enabled;
-          this.soundIconOn.classList.toggle('hidden', !this.sound.enabled);
-          this.soundIconOff.classList.toggle('hidden', this.sound.enabled);
-        });
+    handleAddSquareAt(gx, gz) {
+      if (this.net.squares.size >= MAX_SQUARES) return;
+      const color = this.isAutoColor ? this.getNextAutoColor() : this.currentColor;
+      const pip = this.selectedPipMode === 'auto' ? this.getNextAutoPip() : Number(this.selectedPipMode);
+      const added = this.net.addSquare(gx, gz, color, pip, true, true);
+      if (added) {
+        // Gently recenter camera pan to keep the growing 2D net centered
+        const bounds = this.net.getBounds(false);
+        this.camera.targetPanX = -bounds.centerX;
+        this.camera.targetPanY = -bounds.centerY;
       }
     }
 
-    // --- Post-Solve Step-by-Step Folding Controls & Animation Loop ---
+    updateNetStatusUI() {
+      const count = this.net.squares.size;
+      this.squareCountEl.textContent = `${count} / ${MAX_SQUARES}`;
+
+      this.netStatusBadge.classList.remove('status-valid', 'status-invalid');
+
+      if (this.net.hasOverlap) {
+        this.netStatusBadge.classList.add('status-invalid');
+        this.netStatusText.textContent = '⚠️ Overlap! Two squares fold to the same 3D face';
+      } else if (count === MAX_SQUARES) {
+        this.netStatusBadge.classList.add('status-valid');
+        this.netStatusText.textContent = '✅ Valid 6-Square Dice Net! Ready to fold into 3D';
+      } else {
+        const remaining = MAX_SQUARES - count;
+        this.netStatusText.textContent = `Add ${remaining} more square${remaining > 1 ? 's' : ''} for a 6-sided dice`;
+      }
+    }
+
+    // --- Step-by-Step Folding Controls & Animation Loop ---
     setupFoldingControls() {
+      // Speed buttons
       document.querySelectorAll('.speed-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('.speed-btn').forEach((b) => b.classList.remove('active'));
@@ -869,6 +1454,7 @@
         });
       });
 
+      // Flatten 2D (Unfold All)
       this.btnUnfoldAll.addEventListener('click', () => {
         this.stopAutoPlay();
         if (this.foldProgress > 0) {
@@ -877,16 +1463,19 @@
         this.targetFoldProgress = 0;
       });
 
+      // Fold Out Step (Step - 1)
       this.btnStepBackward.addEventListener('click', () => {
         this.stopAutoPlay();
         this.stepBackwardOne();
       });
 
+      // Fold Next Step (Step + 1)
       this.btnStepForward.addEventListener('click', () => {
         this.stopAutoPlay();
         this.stepForwardOne();
       });
 
+      // Auto Fold / Unfold All Sequentially
       this.btnAutoFold.addEventListener('click', () => {
         if (this.isAutoPlaying) {
           this.stopAutoPlay();
@@ -895,6 +1484,7 @@
         const totalSteps = this.getTotalSteps();
         if (totalSteps === 0) return;
 
+        // If already folded at max step, Auto Fold will unfold step-by-step back to 2D!
         if (this.foldProgress >= totalSteps - 0.02) {
           this.startAutoPlay(-1);
         } else {
@@ -902,10 +1492,15 @@
         }
       });
 
+      // Continuous Scrub Slider
       this.foldSlider.addEventListener('input', (e) => {
         this.stopAutoPlay();
         const totalSteps = this.getTotalSteps();
-        if (totalSteps === 0) return;
+        if (totalSteps === 0) {
+          this.foldProgress = 0;
+          this.targetFoldProgress = 0;
+          return;
+        }
         const val = Number(e.target.value) / 100;
         this.foldProgress = Math.max(0, Math.min(totalSteps, val));
         this.targetFoldProgress = this.foldProgress;
@@ -918,6 +1513,7 @@
       const totalSteps = this.getTotalSteps();
       if (totalSteps === 0) return;
 
+      // Advance to the next integer step
       const currentInt = Math.floor(this.targetFoldProgress + 0.05);
       const nextStep = Math.min(totalSteps, currentInt + 1);
       if (nextStep > this.targetFoldProgress) {
@@ -946,6 +1542,7 @@
       this.autoPlayDirection = direction;
       this.btnAutoFold.classList.add('playing');
 
+      // Trigger first step immediately
       if (direction > 0) {
         const nextStep = Math.min(totalSteps, Math.floor(this.foldProgress + 0.02) + 1);
         this.targetFoldProgress = nextStep;
@@ -970,8 +1567,8 @@
 
     getStepSpeedPerFrame() {
       switch (this.foldSpeed) {
-        case 'slow':   return 0.0155;
-        case 'normal': return 0.026;
+        case 'slow':   return 0.0145;
+        case 'normal': return 0.025;
         case 'fast':   return 0.052;
         default:       return 0.016;
       }
@@ -992,15 +1589,18 @@
             const prevProgress = this.foldProgress;
             this.foldProgress = this.targetFoldProgress;
 
+            // Check if we just finished folding into a complete 6-square valid 3D dice!
             const totalSteps = this.getTotalSteps();
             if (
               totalSteps === MAX_SQUARES - 1 &&
               prevProgress < totalSteps &&
-              this.foldProgress === totalSteps
+              this.foldProgress === totalSteps &&
+              !this.net.hasOverlap
             ) {
               this.sound.playCompleteDice();
             }
 
+            // If auto-playing, queue the next step after a brief educational pause
             if (this.isAutoPlaying && !this.stepPauseTimer) {
               if (this.autoPlayDirection > 0 && this.foldProgress < totalSteps) {
                 this.stepPauseTimer = setTimeout(() => {
@@ -1045,6 +1645,7 @@
       this.foldSlider.max = Math.max(100, totalSteps * 100);
       this.foldSlider.disabled = totalSteps === 0;
 
+      // Step 0 pill (2D Flat)
       const pill0 = document.createElement('button');
       pill0.className = 'step-pill';
       pill0.dataset.step = 0;
@@ -1056,6 +1657,7 @@
       });
       this.stepPillsContainer.appendChild(pill0);
 
+      // Step 1..N-1 pills (one for each folding square)
       for (let i = 1; i <= totalSteps; i++) {
         const node = this.net.orderedNodes[i];
         const symShort = getSymbolConfig(node.pip).short;
@@ -1091,21 +1693,30 @@
       const progress = this.foldProgress;
       const roundedStep = Math.round(progress);
 
+      // Hide candidate slots when net is folded (progress > 0.01)
+      this.viewport.classList.toggle('is-folded', progress > 0.01);
+
+      // Update slider position
       this.foldSlider.value = Math.round(progress * 100);
 
+      // Update Step Pills active/completed state
       this.stepPillsContainer.querySelectorAll('.step-pill').forEach((pill) => {
         const s = Number(pill.dataset.step);
         pill.classList.toggle('current', s === roundedStep);
         pill.classList.toggle('completed', s > 0 && s < roundedStep);
       });
 
+      // Update Stage Badge & Step Description Title
       this.foldStageBadge.classList.remove('stage-folding', 'stage-3d');
-      if (progress <= 0.01) {
+      if (totalSteps === 0) {
         this.foldStageBadge.textContent = '2D SURFACE';
-        this.foldStepTitle.textContent = `Step 0 of ${totalSteps} — Flat 2D Net`;
+        this.foldStepTitle.textContent = 'Click any + slot on the 2D surface to add squares (up to 6)';
+      } else if (progress <= 0.01) {
+        this.foldStageBadge.textContent = '2D SURFACE';
+        this.foldStepTitle.textContent = `Step 0 of ${totalSteps} — Flat 2D Net (${this.net.squares.size} squares)`;
       } else if (progress >= totalSteps - 0.01) {
         this.foldStageBadge.classList.add('stage-3d');
-        this.foldStageBadge.textContent = '🎲 3D DICE';
+        this.foldStageBadge.textContent = this.net.squares.size === 6 && !this.net.hasOverlap ? '🎲 3D DICE' : '3D SHAPE';
         this.foldStepTitle.textContent = `Step ${totalSteps} of ${totalSteps} — All ${totalSteps} hinges folded 90° into 3D!`;
       } else {
         this.foldStageBadge.classList.add('stage-folding');
@@ -1123,6 +1734,7 @@
         }
       }
 
+      // Enable / Disable buttons
       this.btnUnfoldAll.disabled = totalSteps === 0 || progress <= 0.005;
       this.btnStepBackward.disabled = totalSteps === 0 || progress <= 0.005;
       this.btnStepForward.disabled = totalSteps === 0 || progress >= totalSteps - 0.005;
@@ -1137,8 +1749,20 @@
       }
     }
 
-    // --- Spatial Reasoning Quiz & Non-Folding 2D Visual Hints ---
+    // --- Spatial Reasoning Quiz Mode & Non-Folding 2D Visual Hints ---
     setupQuizControls() {
+      if (this.btnQuizMode) {
+        this.btnQuizMode.addEventListener('click', () => {
+          this.setQuizMode(!this.isQuizMode);
+        });
+      }
+
+      if (this.btnExitQuiz) {
+        this.btnExitQuiz.addEventListener('click', () => {
+          this.setQuizMode(false);
+        });
+      }
+
       if (this.btnHintCorner) {
         this.btnHintCorner.addEventListener('click', () => {
           this.toggleQuizVisualHint('corner');
@@ -1211,6 +1835,7 @@
     }
 
     applyQuizCornerDecorations(T, FL, FR) {
+      // Remove any existing corner hint lines/vertices
       this.treeContainer.querySelectorAll('.corner-hint-line, .corner-hint-vertex').forEach((el) => el.remove());
 
       const fm = this.currentQuizFaceMap;
@@ -1264,6 +1889,7 @@
     }
 
     toggleQuizVisualHint(hintType) {
+      if (!this.isQuizMode) return;
       this.sound.playPaint();
 
       if (hintType === 'corner') {
@@ -1317,7 +1943,7 @@
     }
 
     triggerEliminateOneHint() {
-      if (this.quizSolvedCurrent) return;
+      if (!this.isQuizMode || this.quizSolvedCurrent) return;
       const letters = ['A', 'B', 'C', 'D'];
       const candidates = [];
       this.currentQuizOptions.forEach((opt, idx) => {
@@ -1326,6 +1952,7 @@
         }
       });
 
+      // Allow eliminating up to 2 of the 3 wrong options
       if (candidates.length === 0 || this.eliminatedOptionIndices.size >= 2) {
         if (this.btnHintEliminate) this.btnHintEliminate.disabled = true;
         return;
@@ -1356,6 +1983,7 @@
     }
 
     triggerProgressiveQuizHint() {
+      if (!this.isQuizMode) return;
       if (!document.body.classList.contains('quiz-hint-corner')) {
         this.toggleQuizVisualHint('corner');
       } else if (!document.body.classList.contains('quiz-hint-opposites')) {
@@ -1389,6 +2017,37 @@
       }
     }
 
+    setQuizMode(active) {
+      this.isQuizMode = active;
+      document.body.classList.toggle('quiz-active', active);
+      document.body.classList.remove('quiz-revealed');
+      this.clearQuizVisualHints();
+
+      if (this.btnQuizMode) {
+        this.btnQuizMode.classList.toggle('active', active);
+      }
+      if (this.quizSidebar) {
+        this.quizSidebar.classList.toggle('hidden', !active);
+      }
+      if (this.builderSidebar) {
+        this.builderSidebar.classList.toggle('hidden', active);
+      }
+
+      if (active) {
+        // Ensure symbols are visible in Quiz Mode
+        this.viewport.classList.remove('hide-symbols');
+        if (this.btnSymbols) {
+          this.btnSymbols.classList.add('active');
+        }
+        document.querySelectorAll('.mode-selector .tool-btn:not(.quiz-mode-btn)').forEach((b) => {
+          b.classList.remove('active');
+        });
+        this.generateQuizQuestion();
+      } else {
+        this.setMode(this.currentMode || 'add');
+      }
+    }
+
     generateQuizQuestion() {
       this.stopAutoPlay();
       this.foldProgress = 0;
@@ -1403,10 +2062,6 @@
 
       // 1. Pick one of the 11 valid hexomino cube nets with a random 2D rotation & flip
       const chosenNet = ALL_11_VALID_NETS[Math.floor(Math.random() * ALL_11_VALID_NETS.length)];
-      if (this.netPatternText) {
-        this.netPatternText.textContent = `🎲 ${chosenNet.name}`;
-      }
-
       const rot = Math.floor(Math.random() * 4);
       const flip = Math.random() < 0.5 ? -1 : 1;
 
@@ -1428,18 +2083,21 @@
         [symbolIds[i], symbolIds[j]] = [symbolIds[j], symbolIds[i]];
       }
 
-      const list = transformed.map(([gx, gz], idx) => ({
-        gx,
-        gz,
-        color: '#ffffff', // Crisp white squares so filled black square (■) & black circle (●) pop clearly
-        pip: symbolIds[idx],
-      }));
+      const list = transformed.map(([gx, gz], idx) => {
+        const symId = symbolIds[idx];
+        return {
+          gx,
+          gz,
+          color: '#ffffff', // Crisp white squares so filled black square (■) & black circle (●) pop clearly
+          pip: symId,
+        };
+      });
 
       // Pick a random square in the net as the Base square
       const randomBaseIdx = Math.floor(Math.random() * transformed.length);
       const baseKey = `${transformed[randomBaseIdx][0]},${transformed[randomBaseIdx][1]}`;
 
-      this.net.loadState({ baseKey, list });
+      this.net.loadState({ baseKey, list }, false);
       this.camera.resetView(this.net.getBounds(false));
 
       // 3. Map each of the 6 folded 3D faces to its square data { pip, color }
@@ -1464,6 +2122,7 @@
       };
 
       // 4. Choose 1 of the 4 upright 3D corner views of the folded cube as the Correct Answer:
+      // Each corner has (topFace, frontLeftFace, frontRightFace) satisfying N_top x N_left = N_right
       const validCorners = [
         { top: 'TOP', left: 'FRONT', right: 'RIGHT', camRotX: -32, camRotY: -42 },
         { top: 'TOP', left: 'LEFT',  right: 'FRONT', camRotX: -32, camRotY: 42 },
@@ -1497,7 +2156,7 @@
         reason: `Correct! When the 2D net folds up, ${symT} is on Top, ${symFL} is on the Front-Left, and ${symFR} is on the Front-Right!`,
       };
 
-      // 5. Generate 3 mathematically impossible distractors
+      // 5. Generate 3 mathematically impossible distractors (none can be formed under any 3D rotation)
       const distractor1 = {
         isCorrect: false,
         top: faceMap[T],
@@ -1614,6 +2273,7 @@
 
         // Celebrate by folding the 2D net into the 3D cube and orbiting camera to match the winning perspective!
         const bounds = this.net.getBounds(true);
+        this.camera.setProjection('perspective');
         this.camera.targetRotX = opt.camRotX;
         this.camera.targetRotY = opt.camRotY;
         this.camera.targetPanX = -bounds.centerX;
@@ -1645,33 +2305,477 @@
         this.quizScorePill.textContent = `Score: ${this.quizScore} / ${this.quizTotal}`;
       }
       if (this.quizStreakPill) {
-        this.quizStreakPill.textContent = `🔥 Streak: ${this.quizStreak}`;
+        this.quizStreakPill.textContent = `🔥 ${this.quizStreak}`;
       }
     }
 
+    // --- Interactive Clicks on Existing Squares ---
     setupSquareInteractions() {
       this.treeContainer.addEventListener('pointerup', (e) => {
-        if (this.camera.hasDragged || e.button !== 0) return;
+        if (this.camera.hasDragged) return;
+
         const tile = e.target.closest('.square-tile');
         if (!tile) return;
 
-        const key = tile.dataset.key;
-        const node = this.net.nodeMap.get(key);
-        if (!node) return;
+        const gx = parseInt(tile.dataset.gx, 10);
+        const gz = parseInt(tile.dataset.gz, 10);
 
-        this.stopAutoPlay();
-        if (node.stepIndex === 0) {
-          if (this.foldProgress > 0.05) {
-            this.sound.playFoldStep(1, false);
-            this.targetFoldProgress = 0;
+        // In Quiz Mode, clicking a square folds or unfolds up to that square's step
+        if (this.isQuizMode) {
+          if (e.button !== 0) return;
+          const node = this.net.nodeMap.get(`${gx},${gz}`);
+          if (node) {
+            this.stopAutoPlay();
+            if (node.stepIndex === 0) {
+              if (this.foldProgress > 0.05) {
+                this.sound.playFoldStep(1, false);
+                this.targetFoldProgress = 0;
+              }
+            } else if (this.foldProgress >= node.stepIndex - 0.05) {
+              this.sound.playFoldStep(node.stepIndex, false);
+              this.targetFoldProgress = node.stepIndex - 1;
+            } else {
+              this.sound.playFoldStep(node.stepIndex, true);
+              this.targetFoldProgress = node.stepIndex;
+            }
           }
-        } else if (this.foldProgress >= node.stepIndex - 0.05) {
-          this.sound.playFoldStep(node.stepIndex, false);
-          this.targetFoldProgress = node.stepIndex - 1;
-        } else {
-          this.sound.playFoldStep(node.stepIndex, true);
-          this.targetFoldProgress = node.stepIndex;
+          return;
         }
+
+        // Right-click or Shift+Left-click deletes the square
+        if (e.button === 2 || (e.button === 0 && (e.shiftKey || this.currentMode === 'delete'))) {
+          e.preventDefault();
+          const res = this.net.removeSquare(gx, gz, true);
+          if (!res.ok && res.reason === 'bridge_square') {
+            this.netStatusBadge.classList.add('status-invalid');
+            this.netStatusText.textContent = '⚠️ Delete outer leaf squares first so the net stays connected!';
+          } else if (!res.ok && res.reason === 'last_square') {
+            this.netStatusText.textContent = 'At least 1 base square must remain on the surface.';
+          }
+          return;
+        }
+
+        if (e.button !== 0) return;
+
+        if (this.currentMode === 'anchor') {
+          this.stopAutoPlay();
+          this.foldProgress = 0;
+          this.targetFoldProgress = 0;
+          this.net.setBaseSquare(gx, gz, true);
+          return;
+        }
+
+        if (this.currentMode === 'paint') {
+          const sq = this.net.get(gx, gz);
+          if (!sq) return;
+          const newColor = this.currentColor;
+          const newPip = this.selectedPipMode === 'auto'
+            ? ((sq.pip % 6) + 1)
+            : Number(this.selectedPipMode);
+          this.net.styleSquare(gx, gz, newColor, newPip, true);
+          return;
+        }
+
+        // If in Add mode and clicking a folded square, toggle its fold step
+        if (this.currentMode === 'add' && this.foldProgress > 0.05) {
+          const node = this.net.nodeMap.get(`${gx},${gz}`);
+          if (node && node.stepIndex > 0) {
+            this.stopAutoPlay();
+            if (this.foldProgress >= node.stepIndex) {
+              this.sound.playFoldStep(node.stepIndex, false);
+              this.targetFoldProgress = node.stepIndex - 1;
+            } else {
+              this.sound.playFoldStep(node.stepIndex, true);
+              this.targetFoldProgress = node.stepIndex;
+            }
+          }
+        }
+      });
+    }
+
+    // --- Left Palette, Symbol Selector & Presets ---
+    setupPaletteAndPips() {
+      const swatchesContainer = document.getElementById('color-swatches');
+      const customPicker = document.getElementById('custom-color-picker');
+      const customPreview = document.getElementById('custom-color-preview');
+      const autoToggle = document.getElementById('auto-color-toggle');
+
+      PALETTE_COLORS.forEach((color, idx) => {
+        const swatch = document.createElement('div');
+        swatch.className = 'swatch' + (idx === 0 ? ' active' : '');
+        swatch.style.backgroundColor = color;
+        swatch.dataset.color = color;
+        swatch.title = color;
+
+        swatch.addEventListener('click', () => {
+          this.setColor(color);
+          autoToggle.checked = false;
+          this.isAutoColor = false;
+        });
+
+        swatchesContainer.appendChild(swatch);
+      });
+
+      customPicker.addEventListener('input', (e) => {
+        const color = e.target.value;
+        customPreview.style.backgroundColor = color;
+        this.setColor(color);
+        autoToggle.checked = false;
+        this.isAutoColor = false;
+      });
+
+      autoToggle.addEventListener('change', (e) => {
+        this.isAutoColor = e.target.checked;
+      });
+
+      // Symbol Selector buttons
+      const pipBtns = document.querySelectorAll('.pip-btn');
+      pipBtns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          pipBtns.forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          this.selectedPipMode = btn.dataset.pip;
+        });
+      });
+
+      // "Assign All 6" button to distribute all 6 unique geometric symbols
+      const btnAssignSymbols = document.getElementById('btn-assign-symbols');
+      if (btnAssignSymbols) {
+        btnAssignSymbols.addEventListener('click', () => {
+          this.net.autoAssignSum7Pips(true);
+        });
+      }
+    }
+
+    setColor(color) {
+      this.currentColor = color;
+      document.querySelectorAll('.swatch').forEach((s) => {
+        s.classList.toggle('active', s.dataset.color === color);
+      });
+      document.getElementById('custom-color-preview').style.backgroundColor = color;
+    }
+
+    setupToolButtons() {
+      document.querySelectorAll('.mode-selector .tool-btn:not(.quiz-mode-btn)').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (this.isQuizMode) {
+            this.setQuizMode(false);
+          }
+          this.setMode(btn.dataset.mode);
+        });
+      });
+
+      this.btnUndo.addEventListener('click', () => {
+        if (this.isQuizMode) return;
+        this.stopAutoPlay();
+        this.foldProgress = 0;
+        this.targetFoldProgress = 0;
+        this.net.undo();
+      });
+
+      this.btnRedo.addEventListener('click', () => {
+        if (this.isQuizMode) return;
+        this.stopAutoPlay();
+        this.foldProgress = 0;
+        this.targetFoldProgress = 0;
+        this.net.redo();
+      });
+
+      document.getElementById('btn-clear').addEventListener('click', () => {
+        this.loadPreset('single');
+      });
+
+      // Toggle Die Symbols (+, □, ■, ○, ●, ⚃)
+      if (this.btnSymbols) {
+        this.btnSymbols.addEventListener('click', () => {
+          const hidden = this.viewport.classList.toggle('hide-symbols');
+          this.btnSymbols.classList.toggle('active', !hidden);
+        });
+      }
+
+      // Toggle 3D Target Face Labels
+      this.btnFaceLabels.addEventListener('click', () => {
+        const hidden = this.viewport.classList.toggle('hide-face-labels');
+        this.btnFaceLabels.classList.toggle('active', !hidden);
+      });
+
+      // Toggle X-Ray Mode
+      this.btnXray.addEventListener('click', () => {
+        const isXray = this.viewport.classList.toggle('xray-mode');
+        this.btnXray.classList.toggle('active', isXray);
+      });
+
+      // Toggle Sound
+      this.btnSound.addEventListener('click', () => {
+        this.sound.enabled = !this.sound.enabled;
+        this.soundIconOn.classList.toggle('hidden', !this.sound.enabled);
+        this.soundIconOff.classList.toggle('hidden', this.sound.enabled);
+      });
+
+      // Exit Architecture 2D Banner
+      this.btnExitArch.addEventListener('click', () => {
+        this.camera.setViewPreset('iso', this.net.getBounds(this.foldProgress > 2));
+        document.querySelectorAll('.pill-btn').forEach((p) => p.classList.remove('active'));
+        const isoPill = document.querySelector('.pill-btn[data-view="iso"]');
+        if (isoPill) isoPill.classList.add('active');
+        this.archBanner.classList.add('hidden');
+      });
+    }
+
+    setMode(mode) {
+      this.currentMode = mode;
+      document.body.dataset.activeMode = mode;
+      document.querySelectorAll('.mode-selector .tool-btn:not(.quiz-mode-btn)').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+      });
+
+      // If switching to Add mode while folded, unfold to 2D so candidate "+" slots appear
+      if (mode === 'add' && this.foldProgress > 0.01 && this.net.squares.size < MAX_SQUARES) {
+        this.stopAutoPlay();
+        this.targetFoldProgress = 0;
+      }
+    }
+
+    // --- Presets & Random Valid Cube Net Generator ---
+    setupPresets() {
+      const buildStateFromCoords = (coords) => {
+        const list = coords.map(([gx, gz], idx) => ({
+          gx,
+          gz,
+          color: this.isAutoColor ? AUTO_SQUARE_COLORS[idx % AUTO_SQUARE_COLORS.length] : this.currentColor,
+          pip: idx + 1,
+        }));
+        return { baseKey: `${coords[0][0]},${coords[0][1]}`, list };
+      };
+
+      this.presets = {
+        single: () => buildStateFromCoords([[0, 0]]),
+        cross: () => buildStateFromCoords(ALL_11_VALID_NETS[0].coords),
+        tnet: () => buildStateFromCoords(ALL_11_VALID_NETS[1].coords),
+        stairs: () => buildStateFromCoords(ALL_11_VALID_NETS[9].coords),
+        znet: () => buildStateFromCoords(ALL_11_VALID_NETS[6].coords),
+        lnet: () => buildStateFromCoords(ALL_11_VALID_NETS[3].coords),
+        threeThree: () => buildStateFromCoords(ALL_11_VALID_NETS[10].coords),
+        invalidOverlap: () => buildStateFromCoords([
+          [0, 0], [1, 0], [1, 1], [0, 1], [-1, 0], [0, -1]
+        ]),
+      };
+
+      document.querySelectorAll('.preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.loadPreset(btn.dataset.preset);
+        });
+      });
+
+      document.getElementById('btn-random-net').addEventListener('click', () => {
+        this.loadRandomValidNet();
+      });
+    }
+
+    loadPreset(presetName) {
+      if (!this.presets[presetName]) return;
+      this.stopAutoPlay();
+      this.foldProgress = 0;
+      this.targetFoldProgress = 0;
+
+      const state = this.presets[presetName]();
+      this.net.loadState(state, true);
+      if (!this.net.hasOverlap && this.net.squares.size === 6) {
+        this.net.autoAssignSum7Pips(false);
+      }
+      this.camera.resetView(this.net.getBounds(false));
+    }
+
+    loadRandomValidNet() {
+      this.stopAutoPlay();
+      this.foldProgress = 0;
+      this.targetFoldProgress = 0;
+
+      const chosen = ALL_11_VALID_NETS[Math.floor(Math.random() * ALL_11_VALID_NETS.length)];
+      // Apply a random 90-degree rotation and optional flip on the 2D grid
+      const rot = Math.floor(Math.random() * 4);
+      const flip = Math.random() < 0.5 ? -1 : 1;
+
+      const transformed = chosen.coords.map(([x, z]) => {
+        let rx = x * flip;
+        let rz = z;
+        for (let r = 0; r < rot; r++) {
+          const tmp = rx;
+          rx = -rz;
+          rz = tmp;
+        }
+        return [rx, rz];
+      });
+
+      const list = transformed.map(([gx, gz], idx) => ({
+        gx,
+        gz,
+        color: this.isAutoColor ? AUTO_SQUARE_COLORS[idx % AUTO_SQUARE_COLORS.length] : this.currentColor,
+        pip: idx + 1,
+      }));
+
+      this.net.loadState({ baseKey: `${transformed[0][0]},${transformed[0][1]}`, list }, true);
+      this.net.autoAssignSum7Pips(false);
+      this.camera.resetView(this.net.getBounds(false));
+    }
+
+    // --- Camera & Compass Indicators ---
+    setupCameraButtons() {
+      document.getElementById('btn-zoom-in').addEventListener('click', () => this.camera.zoomIn());
+      document.getElementById('btn-zoom-out').addEventListener('click', () => this.camera.zoomOut());
+      document.getElementById('btn-recenter').addEventListener('click', () => {
+        this.camera.resetView(this.net.getBounds(this.foldProgress > 2));
+      });
+
+      const btnAuto = document.getElementById('btn-auto-rotate');
+      btnAuto.addEventListener('click', () => {
+        const active = this.camera.toggleAutoRotate();
+        btnAuto.classList.toggle('active', active);
+      });
+
+      const pills = document.querySelectorAll('.pill-btn');
+      pills.forEach((pill) => {
+        pill.addEventListener('click', () => {
+          pills.forEach((p) => p.classList.remove('active'));
+          pill.classList.add('active');
+          const view = pill.dataset.view;
+          this.camera.setViewPreset(view, this.net.getBounds(this.foldProgress > 2));
+          this.updateCompassPositions();
+
+          if (view === 'iso') {
+            this.archBanner.classList.add('hidden');
+          } else {
+            this.archBanner.classList.remove('hidden');
+            const titles = {
+              top: '2D Top Surface (Plan View)',
+              bottom: 'Bottom View (Under)',
+              front: 'Front Elevation View',
+              back: 'Back Elevation View',
+              left: 'Left Side Elevation View',
+              right: 'Right Side Elevation View',
+            };
+            this.archBannerTitle.textContent = titles[view] || 'Orthogonal View';
+          }
+        });
+      });
+    }
+
+    updateCompassPositions() {
+      const compass = document.getElementById('ground-compass');
+      if (!compass) return;
+
+      let minX = -1, maxX = 1;
+      let minZ = -1, maxZ = 1;
+
+      if (this.net.squares.size > 0) {
+        minX = Infinity; maxX = -Infinity;
+        minZ = Infinity; maxZ = -Infinity;
+        for (const sq of this.net.squares.values()) {
+          if (sq.gx < minX) minX = sq.gx;
+          if (sq.gx > maxX) maxX = sq.gx;
+          if (sq.gz < minZ) minZ = sq.gz;
+          if (sq.gz > maxZ) maxZ = sq.gz;
+        }
+      }
+
+      const cx = ((minX + maxX) / 2) * SQUARE_SIZE;
+      const cz = ((minZ + maxZ) / 2) * SQUARE_SIZE;
+      const floorY = HALF_SIZE + 3;
+
+      const spanX = (maxX - minX + 1) * SQUARE_SIZE;
+      const spanZ = (maxZ - minZ + 1) * SQUARE_SIZE;
+      const radiusX = Math.max(210, spanX * 0.5 + 140);
+      const radiusZ = Math.max(210, spanZ * 0.5 + 140);
+
+      const indFront = compass.querySelector('.dir-front');
+      const indBack = compass.querySelector('.dir-back');
+      const indLeft = compass.querySelector('.dir-left');
+      const indRight = compass.querySelector('.dir-right');
+
+      if (indFront) indFront.style.transform = `translate3d(${cx}px, ${floorY}px, ${cz + radiusZ}px) rotateX(90deg)`;
+      if (indBack)  indBack.style.transform  = `translate3d(${cx}px, ${floorY}px, ${cz - radiusZ}px) rotateX(90deg) rotateZ(180deg)`;
+      if (indLeft)  indLeft.style.transform  = `translate3d(${cx - radiusX}px, ${floorY}px, ${cz}px) rotateX(90deg) rotateZ(90deg)`;
+      if (indRight) indRight.style.transform = `translate3d(${cx + radiusX}px, ${floorY}px, ${cz}px) rotateX(90deg) rotateZ(-90deg)`;
+    }
+
+    setupDirectionIndicators() {
+      document.querySelectorAll('.dir-indicator').forEach((ind) => {
+        ind.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const view = ind.dataset.view;
+          const pill = document.querySelector(`.pill-btn[data-view="${view}"]`);
+          if (pill) pill.click();
+        });
+      });
+
+      const btnHome = document.getElementById('btn-viewcube-home');
+      if (btnHome) {
+        btnHome.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const isoPill = document.querySelector('.pill-btn[data-view="iso"]');
+          if (isoPill) isoPill.click();
+        });
+      }
+
+      const attachHoverPairing = (elements, attrName) => {
+        elements.forEach((el) => {
+          el.addEventListener('pointerenter', () => {
+            const view = el.getAttribute(attrName);
+            if (!view || view === 'iso') return;
+            document.querySelectorAll(`[data-view="${view}"]`).forEach((m) => m.classList.add('highlighted'));
+          });
+          el.addEventListener('pointerleave', () => {
+            const view = el.getAttribute(attrName);
+            if (!view) return;
+            document.querySelectorAll(`[data-view="${view}"]`).forEach((m) => m.classList.remove('highlighted'));
+          });
+        });
+      };
+
+      attachHoverPairing(document.querySelectorAll('.pill-btn'), 'data-view');
+      attachHoverPairing(document.querySelectorAll('.vface'), 'data-view');
+      attachHoverPairing(document.querySelectorAll('.dir-indicator'), 'data-view');
+    }
+
+    // --- Export & Import ---
+    setupExportImport() {
+      const btnExport = document.getElementById('btn-export');
+      const btnImport = document.getElementById('btn-import');
+      const fileInput = document.getElementById('import-file-input');
+
+      btnExport.addEventListener('click', () => {
+        const data = JSON.stringify(this.net.snapshot(), null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `folding-dice-net-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+
+      btnImport.addEventListener('click', () => {
+        fileInput.value = '';
+        fileInput.click();
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const parsed = JSON.parse(event.target.result);
+            this.stopAutoPlay();
+            this.foldProgress = 0;
+            this.targetFoldProgress = 0;
+            this.net.loadState(parsed, true);
+            this.camera.resetView(this.net.getBounds(false));
+          } catch (err) {
+            alert('Failed to parse JSON file.');
+          }
+        };
+        reader.readAsText(file);
       });
     }
 
@@ -1680,27 +2784,22 @@
       window.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT') return;
 
-        const key = e.key.toLowerCase();
-
-        // Select Options A, B, C, D (or 1, 2, 3, 4)
-        const optionMap = { a: 0, b: 1, c: 2, d: 3, '1': 0, '2': 1, '3': 2, '4': 3 };
-        if (Object.prototype.hasOwnProperty.call(optionMap, key)) {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
           e.preventDefault();
-          const idx = optionMap[key];
-          const card = this.quizOptionsGrid.querySelector(`.quiz-option-card[data-index="${idx}"]`);
-          if (card) card.click();
-          return;
-        }
-
-        if (key === 'h') {
+          this.stopAutoPlay();
+          this.foldProgress = 0;
+          this.targetFoldProgress = 0;
+          if (e.shiftKey) {
+            this.net.redo();
+          } else {
+            this.net.undo();
+          }
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
           e.preventDefault();
-          this.triggerProgressiveQuizHint();
-        } else if (key === 'n') {
-          e.preventDefault();
-          this.generateQuizQuestion();
-        } else if (key === 'r') {
-          e.preventDefault();
-          this.camera.resetView(this.net.getBounds(this.foldProgress > 2));
+          this.stopAutoPlay();
+          this.foldProgress = 0;
+          this.targetFoldProgress = 0;
+          this.net.redo();
         } else if (e.key === 'ArrowRight') {
           e.preventDefault();
           this.stopAutoPlay();
@@ -1709,9 +2808,45 @@
           e.preventDefault();
           this.stopAutoPlay();
           this.stepBackwardOne();
-        } else if (key === 'f') {
+        } else if (e.key.toLowerCase() === 'f') {
           e.preventDefault();
           this.btnAutoFold.click();
+        } else if (e.key.toLowerCase() === 'h') {
+          if (this.isQuizMode) {
+            e.preventDefault();
+            this.triggerProgressiveQuizHint();
+          }
+        } else if (e.key.toLowerCase() === 'q') {
+          e.preventDefault();
+          this.setQuizMode(!this.isQuizMode);
+        } else if (e.key === '1') {
+          if (this.isQuizMode) this.setQuizMode(false);
+          this.setMode('add');
+        } else if (e.key === '2') {
+          if (this.isQuizMode) this.setQuizMode(false);
+          this.setMode('delete');
+        } else if (e.key === '3') {
+          if (this.isQuizMode) this.setQuizMode(false);
+          this.setMode('paint');
+        } else if (e.key === '4') {
+          if (this.isQuizMode) this.setQuizMode(false);
+          this.setMode('anchor');
+        } else if (e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'n') {
+          if (this.btnSymbols) this.btnSymbols.click();
+        } else if (e.key.toLowerCase() === 'l') {
+          this.btnFaceLabels.click();
+        } else if (e.key.toLowerCase() === 'x') {
+          this.btnXray.click();
+        } else if (e.key.toLowerCase() === 'r') {
+          this.camera.resetView(this.net.getBounds(this.foldProgress > 2));
+        } else if (e.key === ' ') {
+          e.preventDefault();
+          const active = this.camera.toggleAutoRotate();
+          document.getElementById('btn-auto-rotate').classList.toggle('active', active);
+        } else if (e.key === '+' || e.key === '=') {
+          this.camera.zoomIn();
+        } else if (e.key === '-' || e.key === '_') {
+          this.camera.zoomOut();
         }
       });
     }
